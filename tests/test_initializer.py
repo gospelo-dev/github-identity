@@ -1,8 +1,8 @@
-# gospelo-identity - Directory-aware git/gh CLI identity guard
+# gospelo-github-identity - Directory-aware git/gh CLI identity guard
 # Copyright (c) 2026 NoStudio LLC. All rights reserved.
 # Licensed under the MIT License. See LICENSE.md for details.
 
-"""Tests for ``gospelo_identity.initializer``.
+"""Tests for ``gospelo_github_identity.initializer``.
 
 The interactive flow is exercised with monkeypatched ``input`` / ``$EDITOR``
 so no real shell prompts or editor processes are spawned.
@@ -14,8 +14,8 @@ from pathlib import Path
 
 import pytest
 
-from gospelo_identity import initializer
-from gospelo_identity.config import load_config
+from gospelo_github_identity import initializer
+from gospelo_github_identity.config import load_config
 
 
 # ---------------------------------------------------------------------------
@@ -43,7 +43,7 @@ def test_show_example_template_missing_exits_two(
 ) -> None:
     """If the bundled template is missing, exit 2 (no silent fallback)."""
     monkeypatch.setattr(
-        "gospelo_identity.initializer._template_path",
+        "gospelo_github_identity.initializer._template_path",
         lambda: tmp_path / "missing.yml",
     )
     monkeypatch.setattr("sys.argv", ["init", "--show-example"])
@@ -82,10 +82,10 @@ def test_from_template_copies_to_target(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     target = tmp_home / "config.yml"
-    monkeypatch.setenv("GOSPELO_IDENTITY_CONFIG", str(target))
+    monkeypatch.setenv("GOSPELO_GITHUB_IDENTITY_CONFIG", str(target))
     # Skip the editor invocation.
     monkeypatch.setattr(
-        "gospelo_identity.initializer.subprocess.run",
+        "gospelo_github_identity.initializer.subprocess.run",
         lambda *a, **kw: None,
     )
     monkeypatch.setattr("sys.argv", ["init", "--from-template"])
@@ -107,10 +107,10 @@ def test_from_template_existing_overwrite_yes(
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text("OLD CONTENT\n", encoding="utf-8")
 
-    monkeypatch.setenv("GOSPELO_IDENTITY_CONFIG", str(target))
+    monkeypatch.setenv("GOSPELO_GITHUB_IDENTITY_CONFIG", str(target))
     monkeypatch.setattr("builtins.input", lambda *a, **k: "y")
     monkeypatch.setattr(
-        "gospelo_identity.initializer.subprocess.run",
+        "gospelo_github_identity.initializer.subprocess.run",
         lambda *a, **kw: None,
     )
     monkeypatch.setattr("sys.argv", ["init", "--from-template"])
@@ -130,7 +130,7 @@ def test_from_template_existing_overwrite_no_aborts(
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text("OLD CONTENT\n", encoding="utf-8")
 
-    monkeypatch.setenv("GOSPELO_IDENTITY_CONFIG", str(target))
+    monkeypatch.setenv("GOSPELO_GITHUB_IDENTITY_CONFIG", str(target))
     monkeypatch.setattr("builtins.input", lambda *a, **k: "n")
     monkeypatch.setattr("sys.argv", ["init", "--from-template"])
 
@@ -151,7 +151,7 @@ def test_from_template_force_skips_prompt(
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text("OLD CONTENT\n", encoding="utf-8")
 
-    monkeypatch.setenv("GOSPELO_IDENTITY_CONFIG", str(target))
+    monkeypatch.setenv("GOSPELO_GITHUB_IDENTITY_CONFIG", str(target))
 
     # Make input() raise so we know it must NOT be called when --force is set.
     def boom(*a, **kw):
@@ -159,7 +159,7 @@ def test_from_template_force_skips_prompt(
 
     monkeypatch.setattr("builtins.input", boom)
     monkeypatch.setattr(
-        "gospelo_identity.initializer.subprocess.run",
+        "gospelo_github_identity.initializer.subprocess.run",
         lambda *a, **kw: None,
     )
     monkeypatch.setattr("sys.argv", ["init", "--from-template", "--force"])
@@ -175,14 +175,14 @@ def test_from_template_editor_missing_exits_two(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     target = tmp_home / "config.yml"
-    monkeypatch.setenv("GOSPELO_IDENTITY_CONFIG", str(target))
+    monkeypatch.setenv("GOSPELO_GITHUB_IDENTITY_CONFIG", str(target))
     monkeypatch.setenv("EDITOR", "definitely-no-such-editor-xyz")
 
     def raise_fnf(*a, **kw):
         raise FileNotFoundError("editor not found")
 
     monkeypatch.setattr(
-        "gospelo_identity.initializer.subprocess.run", raise_fnf
+        "gospelo_github_identity.initializer.subprocess.run", raise_fnf
     )
     monkeypatch.setattr("sys.argv", ["init", "--from-template"])
     with pytest.raises(SystemExit) as exc:
@@ -204,7 +204,7 @@ def test_interactive_init_writes_valid_config(
 ) -> None:
     """Drive a full happy-path interactive init via canned ``input``."""
     target = tmp_home / "config.yml"
-    monkeypatch.setenv("GOSPELO_IDENTITY_CONFIG", str(target))
+    monkeypatch.setenv("GOSPELO_GITHUB_IDENTITY_CONFIG", str(target))
 
     # Sequence drives _prompt_profile, then "no more profiles", then default
     # confirmation (default Y for the single-profile shortcut).
@@ -249,7 +249,7 @@ def test_interactive_init_aborts_on_eof(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     target = tmp_home / "config.yml"
-    monkeypatch.setenv("GOSPELO_IDENTITY_CONFIG", str(target))
+    monkeypatch.setenv("GOSPELO_GITHUB_IDENTITY_CONFIG", str(target))
 
     def raise_eof(prompt=""):
         raise EOFError
@@ -273,7 +273,7 @@ def test_interactive_init_existing_config_no_overwrite(
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text("KEEP ME\n", encoding="utf-8")
 
-    monkeypatch.setenv("GOSPELO_IDENTITY_CONFIG", str(target))
+    monkeypatch.setenv("GOSPELO_GITHUB_IDENTITY_CONFIG", str(target))
     answers = iter(["n"])  # decline overwrite
     monkeypatch.setattr("builtins.input", lambda *a, **k: next(answers))
     monkeypatch.setattr("sys.argv", ["init"])

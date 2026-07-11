@@ -1,11 +1,11 @@
-# gospelo-identity - Directory-aware git/gh CLI identity guard
+# gospelo-github-identity - Directory-aware git/gh CLI identity guard
 # Copyright (c) 2026 NoStudio LLC. All rights reserved.
 # Licensed under the MIT License. See LICENSE.md for details.
 
-"""Shared pytest fixtures for gospelo-identity tests.
+"""Shared pytest fixtures for gospelo-github-identity tests.
 
 All fixtures are designed to keep tests fully hermetic: no test reads or
-writes the user's real ``~/.config/gospelo-identity/config.yml``.
+writes the user's real ``~/.config/gospelo-github-identity/config.yml``.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 from textwrap import dedent
-from typing import Callable
+from typing import Any, Callable
 
 import pytest
 
@@ -115,12 +115,12 @@ def minimal_config_file(write_config) -> Path:
 def isolated_config(
     tmp_home: Path, valid_config_file: Path, monkeypatch: pytest.MonkeyPatch
 ) -> Path:
-    """Point ``GOSPELO_IDENTITY_CONFIG`` at a temp file under a temp HOME.
+    """Point ``GOSPELO_GITHUB_IDENTITY_CONFIG`` at a temp file under a temp HOME.
 
     Useful for any code path that calls ``resolve_config_path()`` /
     ``load_config()`` without an explicit path argument.
     """
-    monkeypatch.setenv("GOSPELO_IDENTITY_CONFIG", str(valid_config_file))
+    monkeypatch.setenv("GOSPELO_GITHUB_IDENTITY_CONFIG", str(valid_config_file))
     return valid_config_file
 
 
@@ -184,9 +184,9 @@ def mock_subprocess(monkeypatch: pytest.MonkeyPatch) -> MockSubprocess:
     ``_external`` always reports the tool as available.
     """
     mock = MockSubprocess()
-    monkeypatch.setattr("gospelo_identity._external.subprocess.run", mock)
+    monkeypatch.setattr("gospelo_github_identity._external.subprocess.run", mock)
     monkeypatch.setattr(
-        "gospelo_identity._external.shutil.which",
+        "gospelo_github_identity._external.shutil.which",
         lambda tool: f"/usr/bin/{tool}",
     )
     return mock
@@ -201,7 +201,7 @@ def mock_external(monkeypatch: pytest.MonkeyPatch) -> dict:
     than ``mock_subprocess`` when the test does not care about which CLI
     arguments were passed.
     """
-    state = {
+    state: dict[str, Any] = {
         "git_user_name": None,
         "git_user_email": None,
         "gh_login": None,
@@ -210,6 +210,12 @@ def mock_external(monkeypatch: pytest.MonkeyPatch) -> dict:
         "switch_calls": [],
         "git_set_raises": None,
         "gh_switch_raises": None,
+        # SSH-login check (opt-in). ``remote_url`` is what `git remote get-url
+        # origin` returns; ``ssh_probe_login`` / ``ssh_probe_detail`` are what
+        # the `ssh -T` probe reports back.
+        "remote_url": None,
+        "ssh_probe_login": None,
+        "ssh_probe_detail": "",
         # Simulate the real identity reported by `gh api user` AFTER a switch.
         # None  -> a correct switch (real login becomes the target account).
         # str   -> a keyring mismatch (real login stays this stale value).
@@ -226,7 +232,7 @@ def mock_external(monkeypatch: pytest.MonkeyPatch) -> dict:
     def fake_set_config(key: str, value: str, *, scope: str = "local", cwd=None) -> None:
         state["set_config_calls"].append((key, value, scope, cwd))
         if state["git_set_raises"] is not None:
-            from gospelo_identity._external import ExternalToolError
+            from gospelo_github_identity._external import ExternalToolError
             raise ExternalToolError(state["git_set_raises"])
 
     def fake_inside_tree(cwd=None) -> bool:
@@ -238,7 +244,7 @@ def mock_external(monkeypatch: pytest.MonkeyPatch) -> dict:
     def fake_switch(account: str) -> None:
         state["switch_calls"].append(account)
         if state["gh_switch_raises"] is not None:
-            from gospelo_identity._external import ExternalToolError
+            from gospelo_github_identity._external import ExternalToolError
             raise ExternalToolError(state["gh_switch_raises"])
         # A real `gh auth switch` changes which token `gh api user` resolves to.
         # Mirror that here so the switcher's post-switch verification has
@@ -246,9 +252,17 @@ def mock_external(monkeypatch: pytest.MonkeyPatch) -> dict:
         # when simulating a corrupted keyring credential.
         state["gh_login"] = state["gh_switch_stale_login"] or account
 
-    monkeypatch.setattr("gospelo_identity._external.git_get_config", fake_get_config)
-    monkeypatch.setattr("gospelo_identity._external.git_set_config", fake_set_config)
-    monkeypatch.setattr("gospelo_identity._external.git_inside_work_tree", fake_inside_tree)
-    monkeypatch.setattr("gospelo_identity._external.gh_active_login", fake_active_login)
-    monkeypatch.setattr("gospelo_identity._external.gh_switch_account", fake_switch)
+    def fake_remote_url(remote: str = "origin", cwd=None) -> str | None:
+        return state["remote_url"]
+
+    def fake_ssh_probe(target: str, **kwargs) -> tuple[str | None, str]:
+        return state["ssh_probe_login"], state["ssh_probe_detail"]
+
+    monkeypatch.setattr("gospelo_github_identity._external.git_get_config", fake_get_config)
+    monkeypatch.setattr("gospelo_github_identity._external.git_set_config", fake_set_config)
+    monkeypatch.setattr("gospelo_github_identity._external.git_inside_work_tree", fake_inside_tree)
+    monkeypatch.setattr("gospelo_github_identity._external.gh_active_login", fake_active_login)
+    monkeypatch.setattr("gospelo_github_identity._external.gh_switch_account", fake_switch)
+    monkeypatch.setattr("gospelo_github_identity._external.git_remote_url", fake_remote_url)
+    monkeypatch.setattr("gospelo_github_identity._external.ssh_probe_login", fake_ssh_probe)
     return state

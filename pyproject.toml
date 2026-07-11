@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "gospelo-identity"
+name = "gospelo-github-identity"
 version = "0.1.1"
 description = "Directory-aware git/gh CLI identity guard: prevent account mix-ups across personal and work GitHub profiles"
 readme = "README.md"
@@ -43,14 +43,14 @@ dev = [
 ]
 
 [project.scripts]
-gospelo-identity = "gospelo_identity.cli:main"
+gospelo-github-identity = "gospelo_github_identity.cli:main"
 
 [project.urls]
-Repository = "https://github.com/gospelo-dev/identity"
+Repository = "https://github.com/gospelo-dev/gospelo-github-identity"
 
 [tool.hatch.build.targets.sdist]
 include = [
-    "gospelo_identity/",
+    "gospelo_github_identity/",
     "LICENSE.md",
     "LICENSE_ja.md",
     "README.md",
@@ -58,10 +58,10 @@ include = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["gospelo_identity"]
+packages = ["gospelo_github_identity"]
 
 [tool.hatch.build.targets.wheel.force-include]
-"gospelo_identity/templates/config.template.yml" = "gospelo_identity/templates/config.template.yml"
+"gospelo_github_identity/templates/config.template.yml" = "gospelo_github_identity/templates/config.template.yml"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

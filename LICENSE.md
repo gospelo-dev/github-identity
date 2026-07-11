@@ -27,14 +27,14 @@ SOFTWARE.
 Configuration files (`config.yml`) authored by users using this software,
 including profile definitions, path globs, git identities, and `gh` CLI
 account references, are the intellectual property of their respective
-creators. This license applies only to the gospelo-identity software itself,
+creators. This license applies only to the gospelo-github-identity software itself,
 not to the configuration content produced by or for it.
 
 ## External Tools and Credentials
 
 This software invokes external tools (`git`, `gh` CLI) on the user's behalf
 to read and modify local repository configuration and to switch GitHub
-account contexts. The developers of gospelo-identity make no representations
+account contexts. The developers of gospelo-github-identity make no representations
 or warranties regarding the behavior of these external tools or the safety of
 the credentials they manage. Users are solely responsible for:
 
@@ -48,7 +48,7 @@ the credentials they manage. Users are solely responsible for:
 
 ## No Account Verification
 
-gospelo-identity verifies that the locally configured git identity and `gh`
+gospelo-github-identity verifies that the locally configured git identity and `gh`
 CLI active account match the user-declared profile for the current working
 directory. It does **not** verify ownership of the GitHub account, employer
 authorization, or any contractual obligations. Selecting a profile does not

@@ -1,8 +1,8 @@
-# gospelo-identity - Directory-aware git/gh CLI identity guard
+# gospelo-github-identity - Directory-aware git/gh CLI identity guard
 # Copyright (c) 2026 NoStudio LLC. All rights reserved.
 # Licensed under the MIT License. See LICENSE.md for details.
 
-"""Tests for ``gospelo_identity.prompter``."""
+"""Tests for ``gospelo_github_identity.prompter``."""
 
 from __future__ import annotations
 
@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from gospelo_identity import prompter
-from gospelo_identity._external import ExternalToolError
+from gospelo_github_identity import prompter
+from gospelo_github_identity._external import ExternalToolError
 
 
 def _matched_target(tmp_home: Path) -> Path:
@@ -105,7 +105,7 @@ def test_prompt_no_match_no_default_emits_empty(
         "    paths: ['~/projects/specific/**']\n"
     )
     cfg = write_config(cfg_yaml)
-    monkeypatch.setenv("GOSPELO_IDENTITY_CONFIG", str(cfg))
+    monkeypatch.setenv("GOSPELO_GITHUB_IDENTITY_CONFIG", str(cfg))
 
     nowhere = tmp_home / "elsewhere"
     nowhere.mkdir()
@@ -123,7 +123,7 @@ def test_prompt_swallows_config_error_and_exits_zero(
 ) -> None:
     """The prompt helper must NEVER abort the shell, even on bad config."""
     monkeypatch.setenv(
-        "GOSPELO_IDENTITY_CONFIG",
+        "GOSPELO_GITHUB_IDENTITY_CONFIG",
         str(tmp_home / "no-such-config.yml"),
     )
     monkeypatch.setattr("sys.argv", ["prompt"])
@@ -219,8 +219,8 @@ def test_prompt_show_mismatch_ignores_external_errors(
     def boom_login():
         raise ExternalToolError("gh missing")
 
-    monkeypatch.setattr("gospelo_identity._external.git_get_config", boom_get_config)
-    monkeypatch.setattr("gospelo_identity._external.gh_active_login", boom_login)
+    monkeypatch.setattr("gospelo_github_identity._external.git_get_config", boom_get_config)
+    monkeypatch.setattr("gospelo_github_identity._external.gh_active_login", boom_login)
     monkeypatch.setattr(
         "sys.argv",
         ["prompt", "--cwd", str(target), "--show-mismatch", "--format", "plain"],

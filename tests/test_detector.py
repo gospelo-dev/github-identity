@@ -1,8 +1,8 @@
-# gospelo-identity - Directory-aware git/gh CLI identity guard
+# gospelo-github-identity - Directory-aware git/gh CLI identity guard
 # Copyright (c) 2026 NoStudio LLC. All rights reserved.
 # Licensed under the MIT License. See LICENSE.md for details.
 
-"""Tests for ``gospelo_identity.detector``."""
+"""Tests for ``gospelo_github_identity.detector``."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from gospelo_identity import detector
+from gospelo_github_identity import detector
 
 
 def test_detect_matched_path_prints_profile(
@@ -62,7 +62,7 @@ def test_detect_no_match_no_default_exits_one(
         "    paths: ['~/projects/specific/**']\n"
     )
     cfg = write_config(cfg_yaml)
-    monkeypatch.setenv("GOSPELO_IDENTITY_CONFIG", str(cfg))
+    monkeypatch.setenv("GOSPELO_GITHUB_IDENTITY_CONFIG", str(cfg))
 
     nowhere = tmp_home / "elsewhere"
     nowhere.mkdir()
@@ -81,7 +81,7 @@ def test_detect_config_error_exits_two(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setenv(
-        "GOSPELO_IDENTITY_CONFIG",
+        "GOSPELO_GITHUB_IDENTITY_CONFIG",
         str(tmp_home / "no-such-config.yml"),
     )
     monkeypatch.setattr("sys.argv", ["detect"])
@@ -130,7 +130,7 @@ def test_detect_longest_prefix_wins(
         "    paths: ['~/projects/work/oss-fork/**']\n"
     )
     cfg = write_config(cfg_yaml)
-    monkeypatch.setenv("GOSPELO_IDENTITY_CONFIG", str(cfg))
+    monkeypatch.setenv("GOSPELO_GITHUB_IDENTITY_CONFIG", str(cfg))
 
     target = tmp_home / "projects" / "work" / "oss-fork" / "module"
     target.mkdir(parents=True)

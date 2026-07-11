@@ -1,8 +1,8 @@
-# gospelo-identity - Directory-aware git/gh CLI identity guard
+# gospelo-github-identity - Directory-aware git/gh CLI identity guard
 # Copyright (c) 2026 NoStudio LLC. All rights reserved.
 # Licensed under the MIT License. See LICENSE.md for details.
 
-"""Tests for ``gospelo_identity.lister``."""
+"""Tests for ``gospelo_github_identity.lister``."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from gospelo_identity import lister
+from gospelo_github_identity import lister
 
 
 def test_list_renders_table(
@@ -37,7 +37,7 @@ def test_list_minimal_omits_default_line(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    monkeypatch.setenv("GOSPELO_IDENTITY_CONFIG", str(minimal_config_file))
+    monkeypatch.setenv("GOSPELO_GITHUB_IDENTITY_CONFIG", str(minimal_config_file))
     monkeypatch.setattr("sys.argv", ["list"])
     with pytest.raises(SystemExit) as exc:
         lister.main()
@@ -60,7 +60,7 @@ def test_list_empty_profiles_exits_one(
     Validate the parser-level rejection here.
     """
     cfg = write_config('version: "1"\nprofiles: {}\n')
-    monkeypatch.setenv("GOSPELO_IDENTITY_CONFIG", str(cfg))
+    monkeypatch.setenv("GOSPELO_GITHUB_IDENTITY_CONFIG", str(cfg))
     monkeypatch.setattr("sys.argv", ["list"])
     with pytest.raises(SystemExit) as exc:
         lister.main()
@@ -76,7 +76,7 @@ def test_list_one_path_label_singular(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """Profiles with exactly one path show ``1 path`` (not ``1 paths``)."""
-    monkeypatch.setenv("GOSPELO_IDENTITY_CONFIG", str(minimal_config_file))
+    monkeypatch.setenv("GOSPELO_GITHUB_IDENTITY_CONFIG", str(minimal_config_file))
     monkeypatch.setattr("sys.argv", ["list"])
     with pytest.raises(SystemExit):
         lister.main()
@@ -104,7 +104,7 @@ def test_list_config_error_exits_two(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setenv(
-        "GOSPELO_IDENTITY_CONFIG",
+        "GOSPELO_GITHUB_IDENTITY_CONFIG",
         str(tmp_home / "no-such-config.yml"),
     )
     monkeypatch.setattr("sys.argv", ["list"])

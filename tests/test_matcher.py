@@ -1,8 +1,8 @@
-# gospelo-identity - Directory-aware git/gh CLI identity guard
+# gospelo-github-identity - Directory-aware git/gh CLI identity guard
 # Copyright (c) 2026 NoStudio LLC. All rights reserved.
 # Licensed under the MIT License. See LICENSE.md for details.
 
-"""Tests for ``gospelo_identity.matcher``.
+"""Tests for ``gospelo_github_identity.matcher``.
 
 Covers the public glob translation and the ``resolve_profile`` selection
 rules (longest-literal-prefix wins, default fallback, miss case).
@@ -14,8 +14,8 @@ from pathlib import Path
 
 import pytest
 
-from gospelo_identity.config import Config, Profile
-from gospelo_identity.matcher import (
+from gospelo_github_identity.config import Config, Profile
+from gospelo_github_identity.matcher import (
     MatchResult,
     expand,
     resolve_profile,

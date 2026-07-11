@@ -1,10 +1,10 @@
-# gospelo-identity - Directory-aware git/gh CLI identity guard
+# gospelo-github-identity - Directory-aware git/gh CLI identity guard
 # Copyright (c) 2026 NoStudio LLC. All rights reserved.
 # Licensed under the MIT License. See LICENSE.md for details.
 
-"""Config loading and writing for gospelo-identity.
+"""Config loading and writing for gospelo-github-identity.
 
-The config file lives at ``~/.config/gospelo-identity/config.yml`` and follows
+The config file lives at ``~/.config/gospelo-github-identity/config.yml`` and follows
 the schema documented in ``docs/manual/ja/config-format.md``.
 
 This module is deliberately strict: there are no silent fallbacks. If the file
@@ -23,8 +23,8 @@ from typing import Any
 import yaml
 
 
-CONFIG_PATH_ENV = "GOSPELO_IDENTITY_CONFIG"
-DEFAULT_CONFIG_PATH = Path("~/.config/gospelo-identity/config.yml").expanduser()
+CONFIG_PATH_ENV = "GOSPELO_GITHUB_IDENTITY_CONFIG"
+DEFAULT_CONFIG_PATH = Path("~/.config/gospelo-github-identity/config.yml").expanduser()
 
 
 class ConfigError(Exception):
@@ -41,6 +41,19 @@ class Profile:
     git_user_email: str
     gh_account: str
     paths: list[str] = field(default_factory=list)
+    # Optional SSH-login verification. ``ssh_check`` is True when the profile
+    # declares an ``ssh`` block (opt-in). ``ssh_login`` is the raw expected
+    # GitHub login as written; when omitted it defaults to ``gh_account`` (the
+    # same GitHub identity). ``ssh_host`` forces a host instead of deriving it
+    # from the repo's ``origin`` remote.
+    ssh_check: bool = False
+    ssh_login: str | None = None
+    ssh_host: str | None = None
+
+    @property
+    def expected_ssh_login(self) -> str:
+        """Effective GitHub login the SSH key is expected to authenticate as."""
+        return self.ssh_login or self.gh_account
 
 
 @dataclass
@@ -65,8 +78,8 @@ class Config:
 def resolve_config_path() -> Path:
     """Return the active config file path.
 
-    Honours ``GOSPELO_IDENTITY_CONFIG`` if set; otherwise uses the XDG-style
-    default ``~/.config/gospelo-identity/config.yml``.
+    Honours ``GOSPELO_GITHUB_IDENTITY_CONFIG`` if set; otherwise uses the XDG-style
+    default ``~/.config/gospelo-github-identity/config.yml``.
     """
     override = os.environ.get(CONFIG_PATH_ENV)
     if override:
@@ -86,7 +99,7 @@ def load_config(path: Path | None = None) -> Config:
     if not config_path.exists():
         raise ConfigError(
             f"Config file not found: {config_path}\n"
-            f"Run `gospelo-identity init` to create one."
+            f"Run `gospelo-github-identity init` to create one."
         )
 
     try:
@@ -182,6 +195,8 @@ def _parse_profile(name: str, body: Any, source_path: Path) -> Profile:
             f"{source_path}: profile {name!r} missing required 'gh.account'"
         )
 
+    ssh_check, ssh_login, ssh_host = _parse_ssh(name, body.get("ssh"), source_path)
+
     paths_raw = body.get("paths", [])
     if not isinstance(paths_raw, list):
         raise ConfigError(
@@ -209,6 +224,48 @@ def _parse_profile(name: str, body: Any, source_path: Path) -> Profile:
         git_user_email=user_email.strip(),
         gh_account=gh_account.strip(),
         paths=paths,
+        ssh_check=ssh_check,
+        ssh_login=ssh_login,
+        ssh_host=ssh_host,
+    )
+
+
+def _parse_ssh(
+    name: str, ssh_block: Any, source_path: Path
+) -> tuple[bool, str | None, str | None]:
+    """Parse the optional ``ssh`` block of a profile.
+
+    Returns ``(ssh_check, ssh_login, ssh_host)``. When the block is absent
+    (``None``) the SSH-login check stays disabled and behavior is unchanged.
+    Presence of a mapping (even the empty ``ssh: {}``) opts the profile in;
+    ``login`` defaults to ``gh.account`` and ``host`` is derived from the
+    repo's ``origin`` remote at check time.
+    """
+    if ssh_block is None:
+        return False, None, None
+    if not isinstance(ssh_block, dict):
+        raise ConfigError(
+            f"{source_path}: profile {name!r} 'ssh' must be a mapping"
+        )
+
+    login = ssh_block.get("login")
+    if login is not None and (not isinstance(login, str) or not login.strip()):
+        raise ConfigError(
+            f"{source_path}: profile {name!r} 'ssh.login' must be a "
+            f"non-empty string"
+        )
+
+    host = ssh_block.get("host")
+    if host is not None and (not isinstance(host, str) or not host.strip()):
+        raise ConfigError(
+            f"{source_path}: profile {name!r} 'ssh.host' must be a "
+            f"non-empty string"
+        )
+
+    return (
+        True,
+        login.strip() if isinstance(login, str) else None,
+        host.strip() if isinstance(host, str) else None,
     )
 
 
@@ -225,7 +282,7 @@ def save_config(config: Config, path: Path | None = None) -> Path:
 
     payload: dict[str, Any] = {"version": config.version, "profiles": {}}
     for name, profile in config.profiles.items():
-        payload["profiles"][name] = {
+        entry: dict[str, Any] = {
             "description": profile.description,
             "git": {
                 "user.name": profile.git_user_name,
@@ -234,8 +291,16 @@ def save_config(config: Config, path: Path | None = None) -> Path:
             "gh": {
                 "account": profile.gh_account,
             },
-            "paths": list(profile.paths),
         }
+        if profile.ssh_check:
+            ssh_out: dict[str, str] = {}
+            if profile.ssh_login is not None:
+                ssh_out["login"] = profile.ssh_login
+            if profile.ssh_host is not None:
+                ssh_out["host"] = profile.ssh_host
+            entry["ssh"] = ssh_out
+        entry["paths"] = list(profile.paths)
+        payload["profiles"][name] = entry
     if config.default_profile is not None:
         payload["default_profile"] = config.default_profile
 

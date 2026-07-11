@@ -1,8 +1,8 @@
-# gospelo-identity - Directory-aware git/gh CLI identity guard
+# gospelo-github-identity - Directory-aware git/gh CLI identity guard
 # Copyright (c) 2026 NoStudio LLC. All rights reserved.
 # Licensed under the MIT License. See LICENSE.md for details.
 
-"""Tests for ``gospelo_identity.config``.
+"""Tests for ``gospelo_github_identity.config``.
 
 Covers the public surface: ``load_config``, ``save_config``,
 ``resolve_config_path``, ``Config.get_profile``. Verifies strict validation
@@ -16,7 +16,7 @@ from textwrap import dedent
 
 import pytest
 
-from gospelo_identity.config import (
+from gospelo_github_identity.config import (
     CONFIG_PATH_ENV,
     Config,
     ConfigError,
@@ -200,10 +200,10 @@ def test_resolve_config_path_env_override(
 def test_resolve_config_path_default(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv(CONFIG_PATH_ENV, raising=False)
     path = resolve_config_path()
-    # Defaults to ~/.config/gospelo-identity/config.yml. We assert the leaf
+    # Defaults to ~/.config/gospelo-github-identity/config.yml. We assert the leaf
     # parts only so the test stays portable across HOMEs.
     assert path.name == "config.yml"
-    assert path.parent.name == "gospelo-identity"
+    assert path.parent.name == "gospelo-github-identity"
 
 
 # ---------------------------------------------------------------------------
@@ -233,3 +233,136 @@ def test_save_config_round_trip(tmp_path: Path) -> None:
     reloaded = load_config(target)
     assert reloaded.profiles["p"].git_user_email == "u@example.com"
     assert reloaded.default_profile == "p"
+
+
+# ---------------------------------------------------------------------------
+# ssh block (optional SSH-login check)
+# ---------------------------------------------------------------------------
+
+
+def test_load_config_ssh_absent_disables_check(minimal_config_file: Path) -> None:
+    """A profile without an `ssh` block leaves the check disabled (default)."""
+    cfg = load_config(minimal_config_file)
+    p = cfg.profiles["solo"]
+    assert p.ssh_check is False
+    assert p.ssh_login is None
+    assert p.ssh_host is None
+
+
+def test_load_config_ssh_empty_block_defaults_login_to_gh(write_config) -> None:
+    """`ssh: {}` opts in; expected login defaults to `gh.account`."""
+    cfg_file = write_config(
+        dedent(
+            """\
+            version: "1"
+            profiles:
+              p:
+                git: {user.name: a, user.email: a@example.com}
+                gh: {account: octocat}
+                ssh: {}
+                paths: []
+            """
+        )
+    )
+    p = load_config(cfg_file).profiles["p"]
+    assert p.ssh_check is True
+    assert p.ssh_login is None
+    assert p.expected_ssh_login == "octocat"
+
+
+def test_load_config_ssh_explicit_login_and_host(write_config) -> None:
+    cfg_file = write_config(
+        dedent(
+            """\
+            version: "1"
+            profiles:
+              p:
+                git: {user.name: a, user.email: a@example.com}
+                gh: {account: octocat}
+                ssh: {login: octocat-alt, host: github.com-alt}
+                paths: []
+            """
+        )
+    )
+    p = load_config(cfg_file).profiles["p"]
+    assert p.ssh_check is True
+    assert p.ssh_login == "octocat-alt"
+    assert p.expected_ssh_login == "octocat-alt"
+    assert p.ssh_host == "github.com-alt"
+
+
+def test_load_config_ssh_not_a_mapping_raises(write_config) -> None:
+    cfg_file = write_config(
+        dedent(
+            """\
+            version: "1"
+            profiles:
+              p:
+                git: {user.name: a, user.email: a@example.com}
+                gh: {account: a}
+                ssh: "yes"
+                paths: []
+            """
+        )
+    )
+    with pytest.raises(ConfigError, match="'ssh' must be a mapping"):
+        load_config(cfg_file)
+
+
+def test_load_config_ssh_blank_login_raises(write_config) -> None:
+    cfg_file = write_config(
+        dedent(
+            """\
+            version: "1"
+            profiles:
+              p:
+                git: {user.name: a, user.email: a@example.com}
+                gh: {account: a}
+                ssh: {login: "  "}
+                paths: []
+            """
+        )
+    )
+    with pytest.raises(ConfigError, match="'ssh.login' must be"):
+        load_config(cfg_file)
+
+
+def test_save_config_round_trip_preserves_ssh(tmp_path: Path) -> None:
+    target = tmp_path / "out.yml"
+    cfg = Config(
+        version="1",
+        profiles={
+            "p": Profile(
+                name="p",
+                description="desc",
+                git_user_name="u",
+                git_user_email="u@example.com",
+                gh_account="login",
+                paths=["~/code/**"],
+                ssh_check=True,
+                ssh_login="login-alt",
+                ssh_host="github.com-alt",
+            ),
+            "q": Profile(
+                name="q",
+                description="",
+                git_user_name="v",
+                git_user_email="v@example.com",
+                gh_account="vlogin",
+                paths=[],
+                ssh_check=True,  # opted in, login defaults to gh.account
+            ),
+        },
+        default_profile="p",
+        source_path=target,
+    )
+    save_config(cfg, target)
+    reloaded = load_config(target)
+    rp = reloaded.profiles["p"]
+    assert rp.ssh_check is True
+    assert rp.ssh_login == "login-alt"
+    assert rp.ssh_host == "github.com-alt"
+    rq = reloaded.profiles["q"]
+    assert rq.ssh_check is True
+    assert rq.ssh_login is None
+    assert rq.expected_ssh_login == "vlogin"

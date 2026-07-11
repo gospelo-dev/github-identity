@@ -1,21 +1,21 @@
-# gospelo-identity 設定ファイル サンプル (基本構成)
+# gospelo-github-identity 設定ファイル サンプル (基本構成)
 #
-# 配置先: ~/.config/gospelo-identity/config.yml
+# 配置先: ~/.config/gospelo-github-identity/config.yml
 #         (XDG_CONFIG_HOME が設定されていればそちらを優先)
 #
 # このファイルは公開用サンプルです。実際に使う設定は
-# ~/.config/gospelo-identity/config.yml に置いてください。
+# ~/.config/gospelo-github-identity/config.yml に置いてください。
 #
-# CLI でセットアップする場合: `gospelo-identity init`
-# テンプレートからコピー: `gospelo-identity init --from-template`
+# CLI でセットアップする場合: `gospelo-github-identity init`
+# テンプレートからコピー: `gospelo-github-identity init --from-template`
 #
 # 用途:
 # - 複数の GitHub アカウント (個人 / 業務) を使い分ける
 # - ディレクトリベースで「期待される profile」を定義
-# - gospelo-identity check で git/gh の現状と期待を照合
-# - gospelo-identity switch <profile> で git config + gh CLI を一括切替
+# - gospelo-github-identity check で git/gh の現状と期待を照合
+# - gospelo-github-identity switch <profile> で git config + gh CLI を一括切替
 #
-# 詳細: https://github.com/gospelo-dev/identity/blob/main/docs/manual/ja/config-format.md
+# 詳細: https://github.com/gospelo-dev/gospelo-github-identity/blob/main/docs/manual/ja/config-format.md
 
 version: "1"
 
@@ -28,6 +28,10 @@ profiles:
       user.email: "<your-email@example.com>"
     gh:
       account: "<your-github-login>"
+    # (任意) SSH ログイン検証を有効化。ssh-agent に別アカウントの鍵が載っていて
+    # git push が別人として認証される盲点を check で検出する。
+    # `ssh: {}` だけで期待ログインは gh.account を使用。詳細は config-format.md。
+    # ssh: {}
     paths:
       - ~/projects/personal/**
       - ~/projects/oss/**

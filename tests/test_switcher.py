@@ -1,8 +1,8 @@
-# gospelo-identity - Directory-aware git/gh CLI identity guard
+# gospelo-github-identity - Directory-aware git/gh CLI identity guard
 # Copyright (c) 2026 NoStudio LLC. All rights reserved.
 # Licensed under the MIT License. See LICENSE.md for details.
 
-"""Tests for ``gospelo_identity.switcher``.
+"""Tests for ``gospelo_github_identity.switcher``.
 
 Drives ``switcher.main`` via ``monkeypatch`` of ``sys.argv`` and the
 ``mock_external`` fixture. No real ``git`` / ``gh`` is touched.
@@ -14,8 +14,8 @@ from pathlib import Path
 
 import pytest
 
-from gospelo_identity import switcher
-from gospelo_identity._external import ExternalToolError
+from gospelo_github_identity import switcher
+from gospelo_github_identity._external import ExternalToolError
 
 
 # ---------------------------------------------------------------------------
@@ -164,7 +164,7 @@ def test_switch_config_error_exits_two(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv(
-        "GOSPELO_IDENTITY_CONFIG",
+        "GOSPELO_GITHUB_IDENTITY_CONFIG",
         str(tmp_home / "no-such-config.yml"),
     )
     monkeypatch.setattr("sys.argv", ["switch", "personal", "--global"])
@@ -183,7 +183,7 @@ def test_switch_local_inside_tree_check_failure_exits_two(
     def boom(cwd=None):
         raise ExternalToolError("git missing")
 
-    monkeypatch.setattr("gospelo_identity._external.git_inside_work_tree", boom)
+    monkeypatch.setattr("gospelo_github_identity._external.git_inside_work_tree", boom)
     monkeypatch.setattr("sys.argv", ["switch", "personal"])
     with pytest.raises(SystemExit) as exc:
         switcher.main()
@@ -248,8 +248,8 @@ def test_switch_unverifiable_is_non_fatal(
     def fake_switch(account: str) -> None:
         mock_external["switch_calls"].append(account)
 
-    monkeypatch.setattr("gospelo_identity._external.gh_switch_account", fake_switch)
-    monkeypatch.setattr("gospelo_identity._external.gh_active_login", unauth)
+    monkeypatch.setattr("gospelo_github_identity._external.gh_switch_account", fake_switch)
+    monkeypatch.setattr("gospelo_github_identity._external.gh_active_login", unauth)
     monkeypatch.setattr("sys.argv", ["switch", "personal", "--global"])
     with pytest.raises(SystemExit) as exc:
         switcher.main()

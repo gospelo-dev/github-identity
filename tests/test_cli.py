@@ -1,8 +1,8 @@
-# gospelo-identity - Directory-aware git/gh CLI identity guard
+# gospelo-github-identity - Directory-aware git/gh CLI identity guard
 # Copyright (c) 2026 NoStudio LLC. All rights reserved.
 # Licensed under the MIT License. See LICENSE.md for details.
 
-"""Smoke tests for the ``gospelo-identity`` CLI.
+"""Smoke tests for the ``gospelo-github-identity`` CLI.
 
 Each test invokes the CLI as a subprocess so that argparse, importlib
 dispatch, and the console-script entry point are all exercised. No real
@@ -24,7 +24,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 def _run_cli(*args: str, env_extra: dict[str, str] | None = None) -> subprocess.CompletedProcess:
-    """Invoke the CLI via ``python -m gospelo_identity.cli``.
+    """Invoke the CLI via ``python -m gospelo_github_identity.cli``.
 
     Using ``python -m`` (instead of the installed console script) keeps the
     smoke tests runnable from a plain checkout without ``pip install -e .``.
@@ -35,7 +35,7 @@ def _run_cli(*args: str, env_extra: dict[str, str] | None = None) -> subprocess.
     if env_extra:
         env.update(env_extra)
     return subprocess.run(
-        [sys.executable, "-m", "gospelo_identity.cli", *args],
+        [sys.executable, "-m", "gospelo_github_identity.cli", *args],
         capture_output=True,
         text=True,
         env=env,
@@ -51,9 +51,9 @@ def _run_cli(*args: str, env_extra: dict[str, str] | None = None) -> subprocess.
 def test_cli_version() -> None:
     proc = _run_cli("--version")
     assert proc.returncode == 0, f"--version must exit 0, got: {proc.stderr}"
-    assert "gospelo-identity" in proc.stdout
+    assert "gospelo-github-identity" in proc.stdout
     # Version string must be present.
-    from gospelo_identity import __version__
+    from gospelo_github_identity import __version__
 
     assert __version__ in proc.stdout
 
@@ -145,7 +145,7 @@ def test_init_show_example_prints_template() -> None:
 
 
 def test_resolve_known_subcommand_returns_callable() -> None:
-    from gospelo_identity import cli
+    from gospelo_github_identity import cli
 
     handler = cli._resolve("list")
     assert callable(handler)
@@ -154,7 +154,7 @@ def test_resolve_known_subcommand_returns_callable() -> None:
 def test_resolve_unknown_subcommand_exits_two(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    from gospelo_identity import cli
+    from gospelo_github_identity import cli
 
     with pytest.raises(SystemExit) as exc:
         cli._resolve("does-not-exist")
@@ -166,9 +166,9 @@ def test_resolve_unknown_subcommand_exits_two(
 def test_main_no_args_exits_two_and_prints_usage(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    from gospelo_identity import cli
+    from gospelo_github_identity import cli
 
-    monkeypatch.setattr("sys.argv", ["gospelo-identity"])
+    monkeypatch.setattr("sys.argv", ["gospelo-github-identity"])
     with pytest.raises(SystemExit) as exc:
         cli.main()
     assert exc.value.code == 2
@@ -179,9 +179,9 @@ def test_main_no_args_exits_two_and_prints_usage(
 def test_main_help_short_exits_zero(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    from gospelo_identity import cli
+    from gospelo_github_identity import cli
 
-    monkeypatch.setattr("sys.argv", ["gospelo-identity", "-h"])
+    monkeypatch.setattr("sys.argv", ["gospelo-github-identity", "-h"])
     with pytest.raises(SystemExit) as exc:
         cli.main()
     assert exc.value.code == 0
@@ -192,10 +192,10 @@ def test_main_help_short_exits_zero(
 def test_main_version_short_exits_zero(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    from gospelo_identity import cli
-    from gospelo_identity import __version__
+    from gospelo_github_identity import cli
+    from gospelo_github_identity import __version__
 
-    monkeypatch.setattr("sys.argv", ["gospelo-identity", "-V"])
+    monkeypatch.setattr("sys.argv", ["gospelo-github-identity", "-V"])
     with pytest.raises(SystemExit) as exc:
         cli.main()
     assert exc.value.code == 0
@@ -207,7 +207,7 @@ def test_main_dispatches_to_subcommand(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """``main`` should rewrite ``sys.argv`` and call the resolved handler."""
-    from gospelo_identity import cli
+    from gospelo_github_identity import cli
 
     called: dict[str, list[str]] = {}
 
@@ -218,7 +218,7 @@ def test_main_dispatches_to_subcommand(
 
     monkeypatch.setattr(cli, "_resolve", lambda sub: fake_handler)
     monkeypatch.setattr(
-        "sys.argv", ["gospelo-identity", "list", "--some-flag"]
+        "sys.argv", ["gospelo-github-identity", "list", "--some-flag"]
     )
     cli.main()
-    assert called["argv"] == ["gospelo-identity list", "--some-flag"]
+    assert called["argv"] == ["gospelo-github-identity list", "--some-flag"]

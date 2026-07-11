@@ -1,11 +1,11 @@
-# gospelo-identity - Directory-aware git/gh CLI identity guard
+# gospelo-github-identity - Directory-aware git/gh CLI identity guard
 # Copyright (c) 2026 NoStudio LLC. All rights reserved.
 # Licensed under the MIT License. See LICENSE.md for details.
 
 """Deterministic, local, fail-closed command guard for ``gh`` / ``git``.
 
 This shadows ``gh`` and ``git`` on ``PATH`` with tiny shim executables. Every
-invocation is routed through ``gospelo-identity guard``, which:
+invocation is routed through ``gospelo-github-identity guard``, which:
 
   * passes **read-only** commands straight through to the real binary, and
   * for **write** commands (``git push``; ``gh release/pr/repo/... create`` etc.)
@@ -22,7 +22,7 @@ Design constraints (why this exists rather than depending on a third-party
     check already makes.
   * **Fail-closed within a declared profile** — a write under a matched profile
     with a mismatched identity is blocked. Outside any declared profile (or when
-    ``GOSPELO_IDENTITY_SKIP`` is set) the real command runs unchanged, so the
+    ``GOSPELO_GITHUB_IDENTITY_SKIP`` is set) the real command runs unchanged, so the
     guard never breaks unrelated work.
 
 Limitations (documented, not silently assumed away):
@@ -48,9 +48,9 @@ from . import _external
 from .config import ConfigError, load_config
 from .matcher import resolve_profile
 
-SKIP_ENV = "GOSPELO_IDENTITY_SKIP"
-QUIET_ENV = "GOSPELO_IDENTITY_QUIET"
-DEFAULT_GUARD_DIR = "~/.gospelo-identity/bin"
+SKIP_ENV = "GOSPELO_GITHUB_IDENTITY_SKIP"
+QUIET_ENV = "GOSPELO_GITHUB_IDENTITY_QUIET"
+DEFAULT_GUARD_DIR = "~/.gospelo-github-identity/bin"
 SUPPORTED_TOOLS = ("gh", "git")
 
 
@@ -61,12 +61,12 @@ def _truthy_env(name: str) -> bool:
 def _notice(message: str) -> None:
     """Print an informational guard notice to stderr.
 
-    Suppressed when ``GOSPELO_IDENTITY_QUIET`` is set, so scripts that pipe
+    Suppressed when ``GOSPELO_GITHUB_IDENTITY_QUIET`` is set, so scripts that pipe
     git/gh output can silence the per-write status lines. BLOCK messages do
     NOT go through here — a blocked write is always reported.
     """
     if not _truthy_env(QUIET_ENV):
-        print(f"gospelo-identity guard: {message}", file=sys.stderr)
+        print(f"gospelo-github-identity guard: {message}", file=sys.stderr)
 
 # gh subcommands -> the actions under them that WRITE / are outward-facing.
 # Conservative: anything not listed here passes through. ``api`` is handled
@@ -156,7 +156,7 @@ def is_write_invocation(tool: str, argv: list[str]) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Runtime gate: `gospelo-identity guard --tool <t> --real <path> -- <args>`
+# Runtime gate: `gospelo-github-identity guard --tool <t> --real <path> -- <args>`
 # ---------------------------------------------------------------------------
 
 
@@ -204,11 +204,11 @@ def guard_main() -> None:
     raw = sys.argv[1:]
 
     # Capability probe used by install-guard to confirm the resolved
-    # ``gospelo-identity`` actually has this subcommand before baking it into a
+    # ``gospelo-github-identity`` actually has this subcommand before baking it into a
     # shim. A build predating the guard feature errors with "unknown
     # subcommand: guard" instead, so a clean exit 0 here is the signal.
     if "--selftest" in raw:
-        print("gospelo-identity guard: ok")
+        print("gospelo-github-identity guard: ok")
         return
 
     cmd_argv: list[str] = []
@@ -218,7 +218,7 @@ def guard_main() -> None:
     else:
         opt_args = raw
 
-    parser = argparse.ArgumentParser(prog="gospelo-identity guard", add_help=False)
+    parser = argparse.ArgumentParser(prog="gospelo-github-identity guard", add_help=False)
     parser.add_argument("--tool", required=True, choices=list(SUPPORTED_TOOLS))
     parser.add_argument("--real", required=True)
     opts, _unknown = parser.parse_known_args(opt_args)
@@ -243,13 +243,13 @@ def guard_main() -> None:
         # No usable config -> the guard governs nothing; do not break the user.
         _notice(
             "no usable config; passing through "
-            "(run `gospelo-identity init` to enable enforcement)."
+            "(run `gospelo-github-identity init` to enable enforcement)."
         )
         _exec_real(real, cmd_argv)
         return
     except _external.ExternalToolError as exc:
         # Cannot determine identity for a governed write -> fail closed.
-        print(f"gospelo-identity guard: BLOCKED ({exc})", file=sys.stderr)
+        print(f"gospelo-github-identity guard: BLOCKED ({exc})", file=sys.stderr)
         sys.exit(1)
 
     if profile_name is None:
@@ -262,11 +262,11 @@ def guard_main() -> None:
     if mismatches:
         cmd = f"{tool} {' '.join(cmd_argv)}".strip()
         print(
-            f"gospelo-identity guard: BLOCKED write under profile "
+            f"gospelo-github-identity guard: BLOCKED write under profile "
             f"{profile_name!r} — identity does not match.\n"
             f"  command : {cmd}\n"
             + "".join(f"  mismatch: {m}\n" for m in mismatches)
-            + f"  fix     : gospelo-identity switch {profile_name}\n"
+            + f"  fix     : gospelo-github-identity switch {profile_name}\n"
             f"            (if switch reports OK but this persists, the keyring "
             f"credential is stale — re-login: gh auth logout --user <account> "
             f"&& gh auth login)",
@@ -301,19 +301,19 @@ def _resolve_real_binary(tool: str, guard_dir: Path) -> str | None:
     return None
 
 
-def _gospelo_identity_command() -> str:
+def _gospelo_github_identity_command() -> str:
     """How the shim should invoke this CLI (absolute path preferred)."""
-    found = shutil.which("gospelo-identity")
+    found = shutil.which("gospelo-github-identity")
     if found:
         return found
-    return f"{sys.executable} -m gospelo_identity"
+    return f"{sys.executable} -m gospelo_github_identity"
 
 
 def _command_supports_guard(command: str) -> bool:
     """True if ``<command> guard --selftest`` exits 0.
 
     ``command`` is the string the shim will exec — either an absolute path or
-    ``"<python> -m gospelo_identity"``. We invoke it exactly as the shim would
+    ``"<python> -m gospelo_github_identity"``. We invoke it exactly as the shim would
     so a stale build on ``PATH`` (one without the ``guard`` subcommand) is
     caught here instead of silently breaking every ``git``/``gh`` call.
     """
@@ -332,7 +332,7 @@ def _command_supports_guard(command: str) -> bool:
 
 
 def install_main() -> None:
-    parser = argparse.ArgumentParser(prog="gospelo-identity install-guard")
+    parser = argparse.ArgumentParser(prog="gospelo-github-identity install-guard")
     parser.add_argument("--dir", default=DEFAULT_GUARD_DIR, help="Shim directory.")
     parser.add_argument(
         "--tools",
@@ -347,7 +347,7 @@ def install_main() -> None:
     guard_dir = Path(args.dir).expanduser()
     guard_dir.mkdir(parents=True, exist_ok=True)
     tools = [t.strip() for t in args.tools.split(",") if t.strip()]
-    gi = _gospelo_identity_command()
+    gi = _gospelo_github_identity_command()
 
     # Fail loudly now rather than baking a broken command into every shim. A
     # shim pointing at a build without the ``guard`` subcommand would make every
@@ -355,11 +355,11 @@ def install_main() -> None:
     # read-only commands.
     if not _command_supports_guard(gi):
         print(
-            f"gospelo-identity install-guard: the resolved command {gi!r} does "
+            f"gospelo-github-identity install-guard: the resolved command {gi!r} does "
             "not support the 'guard' subcommand (likely a stale install on "
             "PATH). Refusing to install broken shims.\n"
             "  fix: reinstall the current build, e.g. `uv tool install --force "
-            ".` or `pip install -U gospelo-identity`, then re-run install-guard.",
+            ".` or `pip install -U gospelo-github-identity`, then re-run install-guard.",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -376,8 +376,8 @@ def install_main() -> None:
         shim = guard_dir / tool
         shim.write_text(
             "#!/bin/sh\n"
-            "# gospelo-identity guard shim — do not edit.\n"
-            "# Regenerate with `gospelo-identity install-guard`.\n"
+            "# gospelo-github-identity guard shim — do not edit.\n"
+            "# Regenerate with `gospelo-github-identity install-guard`.\n"
             f'exec {gi} guard --tool {tool} --real "{real}" -- "$@"\n',
             encoding="utf-8",
         )
@@ -394,12 +394,12 @@ def install_main() -> None:
     print(f'  export PATH="{guard_dir}:$PATH"')
     print("Put that line in ~/.zshrc / ~/.bashrc (or your agent's launch env), then reopen the shell.")
     print("Verify:  command -v gh   # should print the shim path above")
-    print("Bypass once:  GOSPELO_IDENTITY_SKIP=1 gh ...")
+    print("Bypass once:  GOSPELO_GITHUB_IDENTITY_SKIP=1 gh ...")
     sys.exit(0)
 
 
 def uninstall_main() -> None:
-    parser = argparse.ArgumentParser(prog="gospelo-identity uninstall-guard")
+    parser = argparse.ArgumentParser(prog="gospelo-github-identity uninstall-guard")
     parser.add_argument("--dir", default=DEFAULT_GUARD_DIR, help="Shim directory.")
     parser.add_argument("--tools", default=",".join(SUPPORTED_TOOLS))
     args = parser.parse_args()

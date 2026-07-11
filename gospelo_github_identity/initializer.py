@@ -1,10 +1,10 @@
-# gospelo-identity - Directory-aware git/gh CLI identity guard
+# gospelo-github-identity - Directory-aware git/gh CLI identity guard
 # Copyright (c) 2026 NoStudio LLC. All rights reserved.
 # Licensed under the MIT License. See LICENSE.md for details.
 
-"""``gospelo-identity init`` command.
+"""``gospelo-github-identity init`` command.
 
-Interactively scaffolds ``~/.config/gospelo-identity/config.yml``. Asks the
+Interactively scaffolds ``~/.config/gospelo-github-identity/config.yml``. Asks the
 user for one or more profiles and (optionally) a ``default_profile``.
 
 Two non-interactive modes are also supported:
@@ -89,8 +89,8 @@ def _init_from_template(target_path: Path, *, force: bool = False) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        prog="gospelo-identity init",
-        description="Initialize ~/.config/gospelo-identity/config.yml",
+        prog="gospelo-github-identity init",
+        description="Initialize ~/.config/gospelo-github-identity/config.yml",
     )
     parser.add_argument(
         "--force",
@@ -131,10 +131,10 @@ def main() -> None:
 
     if args.from_template:
         _init_from_template(target, force=args.force)
-        sys.stderr.write("Run `gospelo-identity list` to verify.\n")
+        sys.stderr.write("Run `gospelo-github-identity list` to verify.\n")
         sys.exit(0)
 
-    print("Welcome to gospelo-identity init.")
+    print("Welcome to gospelo-github-identity init.")
     print(f"Config file will be saved to: {target}")
     print()
 
@@ -185,7 +185,7 @@ def main() -> None:
         )
         written = save_config(config, target)
         print(f"\nSaved: {written}")
-        print("Run `gospelo-identity list` to verify.")
+        print("Run `gospelo-github-identity list` to verify.")
         sys.exit(0)
     except (EOFError, KeyboardInterrupt):
         print("\nAborted.", file=sys.stderr)

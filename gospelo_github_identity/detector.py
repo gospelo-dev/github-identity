@@ -1,8 +1,8 @@
-# gospelo-identity - Directory-aware git/gh CLI identity guard
+# gospelo-github-identity - Directory-aware git/gh CLI identity guard
 # Copyright (c) 2026 NoStudio LLC. All rights reserved.
 # Licensed under the MIT License. See LICENSE.md for details.
 
-"""``gospelo-identity detect`` command.
+"""``gospelo-github-identity detect`` command.
 
 Prints the profile name that owns the current working directory, or exits
 with code 1 when no profile (and no ``default_profile``) matches.
@@ -20,7 +20,7 @@ from .matcher import resolve_profile
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        prog="gospelo-identity detect",
+        prog="gospelo-github-identity detect",
         description="Print the profile name matched by the current directory.",
     )
     parser.add_argument(

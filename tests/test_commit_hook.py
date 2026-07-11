@@ -1,8 +1,8 @@
-# gospelo-identity - Directory-aware git/gh CLI identity guard
+# gospelo-github-identity - Directory-aware git/gh CLI identity guard
 # Copyright (c) 2026 NoStudio LLC. All rights reserved.
 # Licensed under the MIT License. See LICENSE.md for details.
 
-"""Tests for ``gospelo_identity.commit_hook`` — Co-Authored-By stripping plus
+"""Tests for ``gospelo_github_identity.commit_hook`` — Co-Authored-By stripping plus
 the global commit-msg hook install/uninstall."""
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from gospelo_identity import commit_hook
+from gospelo_github_identity import commit_hook
 
 
 # ---------------------------------------------------------------------------
@@ -88,8 +88,8 @@ def _global_hookspath() -> str:
 
 def test_install_and_uninstall_commit_hook(sandbox_git_global, tmp_path, monkeypatch):
     hooks_dir = tmp_path / "ghooks"
-    monkeypatch.setattr("shutil.which", lambda n: "/usr/local/bin/gospelo-identity"
-                        if n == "gospelo-identity" else None)
+    monkeypatch.setattr("shutil.which", lambda n: "/usr/local/bin/gospelo-github-identity"
+                        if n == "gospelo-github-identity" else None)
 
     monkeypatch.setattr("sys.argv", ["install-commit-hook", "--dir", str(hooks_dir)])
     with pytest.raises(SystemExit) as exc:

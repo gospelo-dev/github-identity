@@ -1,4 +1,4 @@
-# gospelo-identity - Directory-aware git/gh CLI identity guard
+# gospelo-github-identity - Directory-aware git/gh CLI identity guard
 # Copyright (c) 2026 NoStudio LLC. All rights reserved.
 # Licensed under the MIT License. See LICENSE.md for details.
 
@@ -6,7 +6,7 @@
 
 The glob translation here mirrors the implementation in
 ``gospelo_review.executor.scope_resolver``. We re-implement it instead of
-importing because gospelo-identity must be installable on its own.
+importing because gospelo-github-identity must be installable on its own.
 
 Supported glob syntax:
 

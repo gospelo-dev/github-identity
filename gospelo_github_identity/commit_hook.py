@@ -1,4 +1,4 @@
-# gospelo-identity - Directory-aware git/gh CLI identity guard
+# gospelo-github-identity - Directory-aware git/gh CLI identity guard
 # Copyright (c) 2026 NoStudio LLC. All rights reserved.
 # Licensed under the MIT License. See LICENSE.md for details.
 
@@ -34,7 +34,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-DEFAULT_HOOKS_DIR = "~/.gospelo-identity/git-hooks"
+DEFAULT_HOOKS_DIR = "~/.gospelo-github-identity/git-hooks"
 
 # Match a ``Co-authored-by:`` trailer line (key is case-insensitive in git).
 _COAUTHOR_RE = re.compile(r"^[ \t]*co-authored-by[ \t]*:.*$", re.IGNORECASE)
@@ -71,8 +71,8 @@ def strip_coauthored_by(text: str) -> str:
 
 
 def strip_main() -> None:
-    """``gospelo-identity strip-coauthors <commit-msg-file>`` (called by the hook)."""
-    parser = argparse.ArgumentParser(prog="gospelo-identity strip-coauthors")
+    """``gospelo-github-identity strip-coauthors <commit-msg-file>`` (called by the hook)."""
+    parser = argparse.ArgumentParser(prog="gospelo-github-identity strip-coauthors")
     parser.add_argument("message_file", help="Path to the commit message file.")
     args = parser.parse_args()
 
@@ -80,7 +80,7 @@ def strip_main() -> None:
     try:
         original = path.read_text(encoding="utf-8")
     except OSError as exc:
-        print(f"gospelo-identity strip-coauthors: cannot read {path}: {exc}", file=sys.stderr)
+        print(f"gospelo-github-identity strip-coauthors: cannot read {path}: {exc}", file=sys.stderr)
         sys.exit(0)  # never block the commit on our own IO error
 
     cleaned = strip_coauthored_by(original)
@@ -94,9 +94,9 @@ def strip_main() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _gospelo_identity_command() -> str:
-    found = shutil.which("gospelo-identity")
-    return found if found else f"{sys.executable} -m gospelo_identity"
+def _gospelo_github_identity_command() -> str:
+    found = shutil.which("gospelo-github-identity")
+    return found if found else f"{sys.executable} -m gospelo_github_identity"
 
 
 def _git_global(get_args: list[str]) -> subprocess.CompletedProcess:
@@ -107,7 +107,7 @@ def _git_global(get_args: list[str]) -> subprocess.CompletedProcess:
 def _dispatcher_body(gi_cmd: str) -> str:
     return (
         "#!/bin/sh\n"
-        "# gospelo-identity global git-hooks dispatcher. Managed by gospelo-identity.\n"
+        "# gospelo-github-identity global git-hooks dispatcher. Managed by gospelo-github-identity.\n"
         '# Strips Co-Authored-By on commit-msg, then chains to the repo\'s own hook.\n'
         'hook="$(basename "$0")"\n'
         f'if [ "$hook" = "commit-msg" ] && [ -n "$1" ]; then\n'
@@ -123,7 +123,7 @@ def _dispatcher_body(gi_cmd: str) -> str:
 
 
 def install_main() -> None:
-    parser = argparse.ArgumentParser(prog="gospelo-identity install-commit-hook")
+    parser = argparse.ArgumentParser(prog="gospelo-github-identity install-commit-hook")
     parser.add_argument("--dir", default=DEFAULT_HOOKS_DIR, help="Global hooks dir.")
     parser.add_argument(
         "--force",
@@ -137,7 +137,7 @@ def install_main() -> None:
 
     # Write the dispatcher and link every standard hook name to it.
     dispatcher = hooks_dir / "_dispatch"
-    dispatcher.write_text(_dispatcher_body(_gospelo_identity_command()), encoding="utf-8")
+    dispatcher.write_text(_dispatcher_body(_gospelo_github_identity_command()), encoding="utf-8")
     dispatcher.chmod(dispatcher.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
     for name in _GIT_HOOK_NAMES:
         link = hooks_dir / name
@@ -170,12 +170,12 @@ def install_main() -> None:
     print(f"  git config --global core.hooksPath = {desired}")
     print("Every `git commit` now strips Co-Authored-By lines; existing repo hooks still run.")
     print("Note: repos that set their OWN core.hooksPath (e.g. husky) override this; install per-repo there.")
-    print("Uninstall: gospelo-identity uninstall-commit-hook")
+    print("Uninstall: gospelo-github-identity uninstall-commit-hook")
     sys.exit(0)
 
 
 def uninstall_main() -> None:
-    parser = argparse.ArgumentParser(prog="gospelo-identity uninstall-commit-hook")
+    parser = argparse.ArgumentParser(prog="gospelo-github-identity uninstall-commit-hook")
     parser.add_argument("--dir", default=DEFAULT_HOOKS_DIR)
     args = parser.parse_args()
     hooks_dir = Path(args.dir).expanduser()

@@ -1,8 +1,8 @@
-# gospelo-identity - Directory-aware git/gh CLI identity guard
+# gospelo-github-identity - Directory-aware git/gh CLI identity guard
 # Copyright (c) 2026 NoStudio LLC. All rights reserved.
 # Licensed under the MIT License. See LICENSE.md for details.
 
-"""``gospelo-identity switch <profile>`` command.
+"""``gospelo-github-identity switch <profile>`` command.
 
 Applies the requested profile by:
   1. Setting ``git config user.name`` and ``user.email`` (local by default,
@@ -27,7 +27,7 @@ from .config import ConfigError, load_config
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        prog="gospelo-identity switch",
+        prog="gospelo-github-identity switch",
         description="Switch local git config + gh CLI active account to the named profile.",
     )
     parser.add_argument("profile", help="Profile name to activate.")

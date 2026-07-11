@@ -1,8 +1,8 @@
-# gospelo-identity - Directory-aware git/gh CLI identity guard
+# gospelo-github-identity - Directory-aware git/gh CLI identity guard
 # Copyright (c) 2026 NoStudio LLC. All rights reserved.
 # Licensed under the MIT License. See LICENSE.md for details.
 
-"""Tests for ``gospelo_identity.guard`` — write classification, the runtime
+"""Tests for ``gospelo_github_identity.guard`` — write classification, the runtime
 gate (fail-closed on identity mismatch), and shim install/uninstall."""
 
 from __future__ import annotations
@@ -12,12 +12,12 @@ from pathlib import Path
 
 import pytest
 
-from gospelo_identity import guard
+from gospelo_github_identity import guard
 
 
 @pytest.fixture(autouse=True)
 def _clear_skip_env():
-    """The guard sets GOSPELO_IDENTITY_SKIP in os.environ (correct for the real
+    """The guard sets GOSPELO_GITHUB_IDENTITY_SKIP in os.environ (correct for the real
     one-shot process, which then execs/exits). Across in-process tests it would
     leak, so clear it around every test."""
     os.environ.pop(guard.SKIP_ENV, None)
@@ -76,7 +76,7 @@ def captured_exec(monkeypatch):
 def _run_guard(monkeypatch, tool, real, args):
     monkeypatch.setattr(
         "sys.argv",
-        ["gospelo-identity guard", "--tool", tool, "--real", real, "--", *args],
+        ["gospelo-github-identity guard", "--tool", tool, "--real", real, "--", *args],
     )
     guard.guard_main()
 
@@ -171,7 +171,7 @@ def test_write_outside_profile_passes_through(
     """A directory governed by no profile (and config has a default) ..."""
     # VALID_CONFIG_YAML has default_profile: personal, so everything matches.
     # Use a config-less dir scenario via ConfigError path instead.
-    monkeypatch.setenv("GOSPELO_IDENTITY_CONFIG", str(tmp_home / "none.yml"))
+    monkeypatch.setenv("GOSPELO_GITHUB_IDENTITY_CONFIG", str(tmp_home / "none.yml"))
     _run_guard(monkeypatch, "git", "/usr/bin/git", ["push"])
     assert captured_exec == [("/usr/bin/git", ["/usr/bin/git", "push"])]
 
@@ -195,14 +195,14 @@ def test_git_push_blocked_on_wrong_author(
 
 
 def _make_realbin(tmp_path, *, guard_capable: bool):
-    """A fake PATH dir with gh/git plus a gospelo-identity of known capability."""
+    """A fake PATH dir with gh/git plus a gospelo-github-identity of known capability."""
     realbin = tmp_path / "realbin"
     realbin.mkdir()
     for t in ("gh", "git"):
         p = realbin / t
         p.write_text("#!/bin/sh\n")
         p.chmod(0o755)
-    gi = realbin / "gospelo-identity"
+    gi = realbin / "gospelo-github-identity"
     if guard_capable:
         # Exit 0 on `guard --selftest`, like the current build.
         gi.write_text(
@@ -221,8 +221,8 @@ def test_install_and_uninstall_guard(monkeypatch, tmp_path, capsys):
     # Provide a fake PATH with a real gh/git so resolution succeeds.
     realbin = _make_realbin(tmp_path, guard_capable=True)
     monkeypatch.setenv("PATH", str(realbin))
-    monkeypatch.setattr("shutil.which", lambda name: str(realbin / "gospelo-identity")
-                        if name == "gospelo-identity" else None)
+    monkeypatch.setattr("shutil.which", lambda name: str(realbin / "gospelo-github-identity")
+                        if name == "gospelo-github-identity" else None)
 
     shim_dir = tmp_path / "guardbin"
     # Default is gh-only; opt into git explicitly for this test.
@@ -247,11 +247,11 @@ def test_install_and_uninstall_guard(monkeypatch, tmp_path, capsys):
 
 
 def test_install_guard_refuses_stale_build(monkeypatch, tmp_path, capsys):
-    # The resolved gospelo-identity lacks the `guard` subcommand (stale install).
+    # The resolved gospelo-github-identity lacks the `guard` subcommand (stale install).
     realbin = _make_realbin(tmp_path, guard_capable=False)
     monkeypatch.setenv("PATH", str(realbin))
-    monkeypatch.setattr("shutil.which", lambda name: str(realbin / "gospelo-identity")
-                        if name == "gospelo-identity" else None)
+    monkeypatch.setattr("shutil.which", lambda name: str(realbin / "gospelo-github-identity")
+                        if name == "gospelo-github-identity" else None)
 
     shim_dir = tmp_path / "guardbin"
     monkeypatch.setattr("sys.argv", ["install-guard", "--dir", str(shim_dir), "--tools", "gh"])
@@ -264,6 +264,6 @@ def test_install_guard_refuses_stale_build(monkeypatch, tmp_path, capsys):
 
 
 def test_guard_selftest_exits_zero(monkeypatch, capsys):
-    monkeypatch.setattr("sys.argv", ["gospelo-identity guard", "--selftest"])
+    monkeypatch.setattr("sys.argv", ["gospelo-github-identity guard", "--selftest"])
     guard.guard_main()  # returns normally (no SystemExit)
     assert "ok" in capsys.readouterr().out

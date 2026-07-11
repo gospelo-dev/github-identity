@@ -1,8 +1,8 @@
-# gospelo-identity - Directory-aware git/gh CLI identity guard
+# gospelo-github-identity - Directory-aware git/gh CLI identity guard
 # Copyright (c) 2026 NoStudio LLC. All rights reserved.
 # Licensed under the MIT License. See LICENSE.md for details.
 
-"""``gospelo-identity prompt`` command.
+"""``gospelo-github-identity prompt`` command.
 
 Shell-prompt helper. Prints the matched profile name (with optional colour
 escapes / mismatch warning) for embedding in ``PS1`` etc. Always exits 0.
@@ -34,7 +34,7 @@ _PS1_RESET = r"\[\e[0m\]"
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        prog="gospelo-identity prompt",
+        prog="gospelo-github-identity prompt",
         description="Shell prompt helper: print [<profile>] for embedding in PS1.",
     )
     parser.add_argument(

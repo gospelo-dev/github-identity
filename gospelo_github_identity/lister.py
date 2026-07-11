@@ -1,8 +1,8 @@
-# gospelo-identity - Directory-aware git/gh CLI identity guard
+# gospelo-github-identity - Directory-aware git/gh CLI identity guard
 # Copyright (c) 2026 NoStudio LLC. All rights reserved.
 # Licensed under the MIT License. See LICENSE.md for details.
 
-"""``gospelo-identity list`` command.
+"""``gospelo-github-identity list`` command.
 
 Print the registered profiles in a fixed-width table.
 """
@@ -17,7 +17,7 @@ from .config import ConfigError, load_config
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        prog="gospelo-identity list",
+        prog="gospelo-github-identity list",
         description="List registered identity profiles.",
     )
     parser.parse_args()
@@ -29,7 +29,7 @@ def main() -> None:
         sys.exit(2)
 
     if not config.profiles:
-        print("No profiles registered. Run `gospelo-identity init`.", file=sys.stderr)
+        print("No profiles registered. Run `gospelo-github-identity init`.", file=sys.stderr)
         sys.exit(1)
 
     rows: list[tuple[str, str, str, str, str]] = []

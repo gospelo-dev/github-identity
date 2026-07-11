@@ -9,40 +9,40 @@
 ## Installation
 
 ```bash
-pip install gospelo-identity
+pip install gospelo-github-identity
 ```
 
 Verify:
 
 ```bash
-gospelo-identity --version
+gospelo-github-identity --version
 ```
 
 ## 1. Create a Config
 
-Create `~/.config/gospelo-identity/config.yml` interactively:
+Create `~/.config/gospelo-github-identity/config.yml` interactively:
 
 ```bash
-gospelo-identity init
+gospelo-github-identity init
 ```
 
 If you prefer to skip the interactive prompts, you can copy the bundled template and open it in `$EDITOR`:
 
 ```bash
 # Copy bundled template + open in $EDITOR (default: vi)
-gospelo-identity init --from-template
+gospelo-github-identity init --from-template
 
 # Print bundled template to stdout (for piping)
-gospelo-identity init --show-example > ~/.config/gospelo-identity/config.yml
+gospelo-github-identity init --show-example > ~/.config/gospelo-github-identity/config.yml
 ```
 
-Sample configurations (basic / minimal / advanced) are available under [examples/](https://github.com/gospelo-dev/identity/tree/main/examples).
+Sample configurations (basic / minimal / advanced) are available under [examples/](https://github.com/gospelo-dev/gospelo-github-identity/tree/main/examples).
 
 Example session:
 
 ```
-Welcome to gospelo-identity init.
-Config file will be saved to: /Users/you/.config/gospelo-identity/config.yml
+Welcome to gospelo-github-identity init.
+Config file will be saved to: /Users/you/.config/gospelo-github-identity/config.yml
 
 Profile name: oss
 Description (optional): Personal OSS work
@@ -66,13 +66,13 @@ Paths (one per line, empty line to finish):
 Add another profile? [y/N]: n
 Default profile (one of: oss, work) [leave blank for none]: oss
 
-Saved: /Users/you/.config/gospelo-identity/config.yml
+Saved: /Users/you/.config/gospelo-github-identity/config.yml
 ```
 
 ## 2. Verify
 
 ```bash
-gospelo-identity list
+gospelo-github-identity list
 ```
 
 A table of registered profiles is printed.
@@ -83,7 +83,7 @@ Move into an OSS repository:
 
 ```bash
 cd ~/projects/gospelo-dev/your-repo
-gospelo-identity check
+gospelo-github-identity check
 ```
 
 If `OK: identity matches profile 'oss'.` is printed, your current git/gh state matches the resolved profile. Any `NG` row indicates a mismatch.
@@ -91,7 +91,7 @@ If `OK: identity matches profile 'oss'.` is printed, your current git/gh state m
 ## 4. Switch in One Shot
 
 ```bash
-gospelo-identity switch oss
+gospelo-github-identity switch oss
 ```
 
 This applies local `git config user.name` / `user.email` and `gh auth switch -u <account>` together.

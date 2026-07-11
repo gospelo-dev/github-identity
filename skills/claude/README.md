@@ -1,4 +1,4 @@
-# Claude Code Skill - gospelo-identity-check
+# Claude Code Skill - gospelo-github-identity-check
 
 Drop-in [Agent Skill](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/overview)
 for Claude Code that auto-verifies your git/gh CLI identity before any write
@@ -17,11 +17,11 @@ Before Claude Code executes any of:
 - Anything you describe as "publish", "release", "push", "deploy", "merge",
   "公開", "マージ", "デプロイ"
 
-…it runs `gospelo-identity check` in the current working directory and:
+…it runs `gospelo-github-identity check` in the current working directory and:
 
 - Exit `0` (match): proceeds silently
 - Exit `1` (mismatch): **stops**, shows the expected profile, the mismatched
-  fields, and the `gospelo-identity switch <profile>` command to fix it
+  fields, and the `gospelo-github-identity switch <profile>` command to fix it
 - Exit `2` (tool error): surfaces the error to you instead of assuming a
   default identity (the project policy is no silent fallback)
 
@@ -30,8 +30,8 @@ Before Claude Code executes any of:
 Prerequisite: install the CLI.
 
 ```bash
-pip install gospelo-identity
-gospelo-identity init   # create ~/.config/gospelo-identity/config.yml
+pip install gospelo-github-identity
+gospelo-github-identity init   # create ~/.config/gospelo-github-identity/config.yml
 ```
 
 Then install the skill into Claude Code.
@@ -39,20 +39,20 @@ Then install the skill into Claude Code.
 ### Per-project (recommended)
 
 ```bash
-mkdir -p .claude/skills/gospelo-identity-check
-cp /path/to/gospelo-identity/skills/claude/skill.md \
-   .claude/skills/gospelo-identity-check/skill.md
+mkdir -p .claude/skills/gospelo-github-identity-check
+cp /path/to/gospelo-github-identity/skills/claude/skill.md \
+   .claude/skills/gospelo-github-identity-check/skill.md
 ```
 
-Commit `.claude/skills/gospelo-identity-check/skill.md` so all collaborators on
+Commit `.claude/skills/gospelo-github-identity-check/skill.md` so all collaborators on
 the project benefit.
 
 ### Global (every Claude Code session, every project)
 
 ```bash
-mkdir -p ~/.claude/skills/gospelo-identity-check
-cp /path/to/gospelo-identity/skills/claude/skill.md \
-   ~/.claude/skills/gospelo-identity-check/skill.md
+mkdir -p ~/.claude/skills/gospelo-github-identity-check
+cp /path/to/gospelo-github-identity/skills/claude/skill.md \
+   ~/.claude/skills/gospelo-github-identity-check/skill.md
 ```
 
 After installing, restart Claude Code (or run `/skills reload` if your version
@@ -69,7 +69,7 @@ Expected:
 - If your identity matches: a normal `git push` runs.
 - If your identity is mismatched: Claude Code stops, shows the expected
   profile, the actual mismatched fields, and the
-  `gospelo-identity switch <profile>` fix command.
+  `gospelo-github-identity switch <profile>` fix command.
 
 ## Customising
 
@@ -84,6 +84,6 @@ behavior — those are core to the protective contract.
 
 ## See also
 
-- [`../README.md`](../README.md) — overview of all gospelo-identity Agent Skills
+- [`../README.md`](../README.md) — overview of all gospelo-github-identity Agent Skills
 - [`skill.md`](skill.md) — the skill itself
-- [gospelo-identity CLI README](../../README.md)
+- [gospelo-github-identity CLI README](../../README.md)

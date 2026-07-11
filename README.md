@@ -1,139 +1,147 @@
-[日本語版](https://github.com/gospelo-dev/identity/blob/main/README_ja.md)
+[日本語版](https://github.com/gospelo-dev/gospelo-github-identity/blob/main/README_ja.md)
 
-# gospelo-identity — Directory-Aware git/gh CLI Identity Guard
+# gospelo-github-identity
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/gospelo-dev/identity/blob/main/LICENSE.md)
-[![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
-[![GitHub CLI](https://img.shields.io/badge/GitHub-gh_CLI-181717.svg?logo=github&logoColor=white)](https://cli.github.com/)
-[![Multi-Account](https://img.shields.io/badge/Multi-Account_Safety-ff6f00.svg)](#why-gospelo-identity)
+An identity runtime for safely delegating GitHub operations to autonomous AI agents
 
-A small CLI that prevents `git` / `gh` account mix-ups when you maintain multiple GitHub profiles (personal OSS, employer, client). It maps the **current working directory** to an expected profile and verifies that local `git config` and the active `gh` CLI account match — and switches them if they do not.
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/gospelo-dev/gospelo-github-identity/blob/main/LICENSE.md) [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/) [![GitHub CLI](https://img.shields.io/badge/GitHub-gh_CLI-181717.svg?logo=github&logoColor=white)](https://cli.github.com/) [![AI-Agent Safety](https://img.shields.io/badge/AI--Agent-Safety-22c55e.svg)](#why-gospelo-github-identity)
 
-## Why gospelo-identity?
+![gospelo-github-identity hero](https://raw.githubusercontent.com/gospelo-dev/gospelo-github-identity/main/images/hero.jpg)
 
-If you contribute to OSS as `you@example.com` from `~/projects/oss/**` and to your employer as `you@company.com` from `~/projects/work/**`, a single forgotten `gh auth switch` can leak the wrong commit author or release into the wrong organisation. gospelo-identity:
+An identity runtime for entrusting GitHub writes — `git push`, `gh pr create`, `gh release` — to autonomously operating AI agents (Claude Code, Copilot, CI bots). It is not a convenience helper for human command-line use: it is **designed for agents operating `gh` / `git` against the outside world, safely**.
 
-- **Declares intent up front** in `~/.config/gospelo-identity/config.yml` — one entry per profile, with directory globs
-- **Detects mismatches** before you commit or release (`gospelo-identity check`)
-- **Switches both at once** — local `git config user.name`/`user.email` *and* `gh auth switch -u <account>` (`gospelo-identity switch <profile>`)
-- **No fallbacks**: if there is no config file or the directory does not match any profile, you get a clear error — not a silent default
+Identity is derived from the **target repository of the operation**, not from "the directory you happen to be in" (target-aware); the correct token is **injected per invocation** (enforce); and paths that do not go through the guard have **no credentials at all** (fail-closed). Because nothing depends on shell hooks or interactive prompts, it works with the same strength in an agent's non-interactive shell (`bash -c ...`) as in a human's interactive one.
+
+## Why gospelo-github-identity?
+
+Run an autonomous agent on a machine that juggles several GitHub accounts (personal OSS, employer, client) and human-oriented identity management collapses at its premises:
+
+- **Agents run in non-interactive shells** — shell hooks like direnv only fire when a prompt is drawn, so `.envrc` is never evaluated under an agent's `bash -c` ([direnv/direnv#262](https://github.com/direnv/direnv/issues/262))
+- **cwd and the operation target don't match** — agents run `gh --repo owner/x pr create` and `git -C /path/to/x push` from arbitrary places; cwd-based mechanisms never look at the target
+- **The `gh` account is one per machine** — the active account is global state, not bound to a repository, and automatic switching based on pwd / remote is explicitly out of scope for gh itself ([cli/cli multiple-accounts.md](https://github.com/cli/cli/blob/trunk/docs/multiple-accounts.md))
+
+The result is an accident that assembles itself while no human is watching: **a write to the right repo with the wrong account**.
+
+### The three identity layers and how each is protected
+
+| Layer | Where identity is bound | Protected by |
+|---|---|---|
+| ① git author | target repo's local `git config` | `switch` applies it; `check` / `doctor` verify it |
+| ② SSH push auth | host alias in the remote URL + `IdentitiesOnly` | `doctor` audits key pinning |
+| ③ gh account | **machine-global by nature** ← the hole | **guard injects a token derived from the operation target, per invocation** |
+
+Layers ① and ② can be pinned to the target repo with standard tooling. gospelo-github-identity brings ③ into the same "**identity is bound to the target**" structure, making all three layers target-local.
+
+### Compared with the usual approaches
+
+| | direnv (`GH_TOKEN` injection) | `gh auth switch` | gospelo-github-identity guard |
+|---|---|---|---|
+| Non-interactive shells (agents) | ❌ hook never fires | — (manual) | ✅ always on via PATH shim |
+| Identity derived from | cwd | machine-global | **the target repository** |
+| When bypassed | ❌ global account goes through | ❌ same | ⭕ no credentials — fails safely |
 
 ## How it works
 
-The current working directory resolves to a profile (via path globs in your config). From that one decision, three operations act on your `git` and `gh` identity: `check` reads and compares, `switch` applies, and the optional `guard` shim blocks wrong-identity writes.
+Three design principles:
 
-![gospelo-identity architecture](https://raw.githubusercontent.com/gospelo-dev/identity/main/images/architecture.jpg)
+1. **target-aware** — identity is derived from the `--repo` argument / `git -C` / the target repo's remote; cwd is only the last fallback
+2. **enforce** — instead of inspecting and warning, the guard reverse-maps the target repo's owner to a profile and injects that profile's token as `GH_TOKEN` into the real command
+3. **fail-closed** — an unresolvable target, an undeclared owner, or a bypassed shim all degrade to "refuse to run / fail with an auth error", never to "succeed with the wrong identity"
 
-Dashed arrows are read-only (config load, `check`'s comparison); solid arrows write or gate writes.
+![gospelo-github-identity architecture](https://raw.githubusercontent.com/gospelo-dev/gospelo-github-identity/main/images/README-1.png)
 
-<details>
-<summary>Diagram source (Mermaid)</summary>
+<details><summary>Diagram source (Mermaid)</summary>
 
 ```mermaid
 flowchart TB
-    CWD["current directory"]
-    Config[("config.yml<br/>profiles + path globs")]
-    subgraph Core["gospelo-identity"]
-        Matcher["resolve profile<br/>(dir → profile)"]
-        Check["check<br/>compare expected vs actual"]
-        Switch["switch<br/>apply git + gh"]
-        Guard["guard (PATH shim)<br/>block wrong-identity writes"]
+    Agent["fa:fa-robot Autonomous agent<br/>(always on, even in non-interactive shells)"]
+    subgraph Guard["gospelo-github-identity guard — enforcing PATH shim"]
+        Resolve["fa:fa-magnifying-glass Resolve target<br/>--repo / git -C / target remote"]
+        Map["fa:fa-sitemap owner → profile lookup"]
+        Inject["fa:fa-key Inject token<br/>materialize GH_TOKEN per invocation"]
+        Deny["fa:fa-ban fail-closed<br/>unresolvable / unknown profile: refuse to run"]
     end
-    subgraph Ext["external CLIs"]
-        Git["git config"]
-        Gh["gh CLI"]
-    end
+    Config[("fa:fa-database config.yml<br/>profiles + owners + paths")]
+    Store[("fa:fa-lock Credential store<br/>gh keyring")]
+    Real["fa:fa-terminal Real gh / git"]
+    Hub["fa:fa-cloud GitHub"]
+    Bypass["fa:fa-triangle-exclamation Shim bypass (absolute path, etc.)"]
+    Fail["fa:fa-circle-check Fails safely with an auth error<br/>(no credentials in the environment)"]
 
-    CWD --> Matcher
-    Config -.->|read| Matcher
-    Matcher --> Check
-    Matcher --> Switch
-    Matcher --> Guard
-    Check -.->|read| Git
-    Check -.->|read| Gh
-    Switch -->|write| Git
-    Switch -->|write| Gh
-    Guard -->|gated write| Git
-    Guard -->|gated write| Gh
+    Agent --> Resolve
+    Resolve --> Map
+    Map --> Inject
+    Inject --> Real
+    Real --> Hub
+    Resolve -->|unresolvable| Deny
+    Map -->|unknown profile| Deny
+    Config -.->|read| Map
+    Store -.->|read| Inject
+    Bypass -.->|no credentials| Fail
 
     classDef node fill:#FFFFFF,stroke:#666666,stroke-width:1.5px,color:#2C2C2C
-    class CWD,Config,Matcher,Check,Switch,Guard,Git,Gh node
-    style Core fill:#F0FDFA,stroke:#0D9488,color:#2C2C2C
-    style Ext fill:#F8FAFC,stroke:#94A3B8,color:#2C2C2C
+    class Agent,Resolve,Map,Inject,Deny,Config,Store,Real,Hub,Bypass,Fail node
+    style Guard fill:#F0FDFA,stroke:#0D9488,color:#2C2C2C
 
-    linkStyle 0,2,3,4,7,8,9,10 stroke:#0D9488,stroke-width:2px
-    linkStyle 1,5,6 stroke:#9CA3AF,stroke-width:1.5px,stroke-dasharray:4 4
+    %% normal flow = solid teal / reads & bypass = dashed grey
+    linkStyle 0,1,2,3,4,5,6 stroke:#0D9488,stroke-width:2px
+    linkStyle 7,8,9 stroke:#9CA3AF,stroke-width:1.5px,stroke-dasharray:4 4
 ```
 
 </details>
 
+Dashed arrows are reads or bypass paths; solid arrows are the enforced flow that leads to a write. Fail-closed is the keystone: the PATH shim can be bypassed with an absolute path, but if no `GH_TOKEN` lives in the environment (no direnv needed) and no global active account is kept, **there are no credentials on the far side of the bypass** — so a bypass degrades into an auth error, not a success under the wrong account. `doctor` audits that this discipline is being maintained.
+
 ## Installation
 
 ```bash
-pip install gospelo-identity
+pip install gospelo-github-identity
 ```
 
-Requires Python 3.11+. The `git` and [`gh` CLI](https://cli.github.com/) binaries must be available on `PATH`.
+Requires Python 3.11+, with `git` and the [`gh` CLI](https://cli.github.com/) on `PATH`.
 
-## Quick Start
+## Quick start — four steps before handing the keys to an agent
+
+A human runs the setup once; from then on the machine stays in a state agents can operate safely:
 
 ```bash
-# 1. Create the config interactively
-gospelo-identity init
+# 1. Create the config interactively (declare profiles / paths / owners)
+gospelo-github-identity init
 
-# 2. Verify the current directory matches the expected profile
-gospelo-identity check
+# 2. Audit the setup and the fail-closed state
+#    (bare remotes, aliases with no pinned key, GH_TOKEN lingering in the env, leftover global auth ...)
+gospelo-github-identity doctor --sweep
 
-# 3. Switch git + gh to the profile that matches the current directory
-gospelo-identity switch oss
+# 3. Install the guard (shadow gh / git with PATH shims)
+gospelo-github-identity install-guard --tools gh,git
+export PATH="$HOME/.gospelo-github-identity/bin:$PATH"   # add to ~/.zshrc / ~/.bashrc
 
-# 4. Show profiles
-gospelo-identity list
+# 4. Verify — identity is selected from the target repo, from any cwd
+gospelo-github-identity check
+gh --repo <owner>/<repo> repo view   # runs with the token of the profile that owns <owner>
 ```
 
-Optional: surface the active profile in your shell prompt:
+No agent-side configuration is needed (the PATH shim intercepts every `gh` / `git` call). To layer an additional pre-write check on the agent itself, install the [agent skills](#agent-skills).
 
-```bash
-PS1='$(gospelo-identity prompt --format=ps1 --show-mismatch) \w \$ '
-```
-
-## CLI Commands
+## CLI commands
 
 | Command | Description |
 |---------|-------------|
-| `init` | Interactively scaffold `~/.config/gospelo-identity/config.yml` |
-| `list` | List registered profiles in a table |
-| `detect` | Print the profile name matched by the current directory |
-| `check` | Compare expected vs actual `git config` and `gh` CLI account |
-| `switch <profile>` | Apply git config + `gh auth switch` for the profile |
-| `prompt` | Shell-prompt helper (`--format=ps1` / `plain` / `color`) |
-| `install-guard` / `uninstall-guard` | Shadow `gh`/`git` on `PATH` to block wrong-identity writes |
-| `install-commit-hook` / `uninstall-commit-hook` | Global `commit-msg` hook that strips `Co-Authored-By` |
+| `init` | Interactively create `~/.config/gospelo-github-identity/config.yml` |
+| `list` | List registered profiles as a table |
+| `detect` | Print the profile that applies to the current directory |
+| `check` | Compare expected vs. live state (`git config` / `gh` CLI) |
+| `doctor` | Audit the *health* of the setup: identity scope/values, remote + SSH alias key pinning, **ambient credentials (lingering `GH_TOKEN` / leftover global auth)**. `--sweep` audits a profile's whole tree |
+| `switch <profile>` | One-shot manual application of a profile's git config |
+| `prompt` | Shell-prompt integration helper (`--format=ps1` / `plain` / `color`) |
+| `install-guard` / `uninstall-guard` | Shadow `gh` / `git` with PATH shims that enforce target-repo-based identity |
+| `install-commit-hook` / `uninstall-commit-hook` | Global `commit-msg` hook that strips `Co-Authored-By` trailers |
 
-See the [CLI Reference](https://github.com/gospelo-dev/identity/blob/main/docs/manual/en/cli-reference.md) for full options and exit codes.
+See the [CLI reference](https://github.com/gospelo-dev/gospelo-github-identity/blob/main/docs/manual/en/cli-reference.md) for details.
 
 ## Configuration
 
-Example configs are available in [examples/](https://github.com/gospelo-dev/identity/tree/main/examples):
-
-- `config.yml` — basic 2-profile setup with comments
-- `config.minimal.yml` — 1-profile minimal example
-- `config.advanced.yml` — 3+ profile setup for freelancers / multi-client work
-
-To create your config:
-
-```bash
-# Interactive setup
-gospelo-identity init
-
-# Copy bundled template + open in $EDITOR (default: vi)
-gospelo-identity init --from-template
-
-# Print bundled template to stdout (for piping)
-gospelo-identity init --show-example > ~/.config/gospelo-identity/config.yml
-```
-
-`~/.config/gospelo-identity/config.yml`:
+In `~/.config/gospelo-github-identity/config.yml`, declare profiles so they can be resolved from both directories (paths) and **GitHub owners (owners)**. **`owners` is the linchpin of target-aware enforcement** — the guard takes the owner from `gh --repo` or the target repo's remote and reverse-maps it to a profile:
 
 ```yaml
 version: "1"
@@ -146,9 +154,9 @@ profiles:
       user.email: you@example.com
     gh:
       account: your-oss-login
-    paths:
-      - ~/projects/gospelo-dev/**
-      - ~/projects/personal/**
+      owners: [your-oss-login, your-oss-org]   # writes to these owners use this identity
+    paths:                                      # cwd fallback (for operations with no repo target)
+      - ~/projects/oss/**
 
   work:
     description: "Company work"
@@ -157,90 +165,67 @@ profiles:
       user.email: you@company.com
     gh:
       account: your-work-login
+      owners: [your-company-org]
     paths:
       - ~/projects/work/**
-
-# Used only when no profile path matches the current directory (optional)
-default_profile: oss
 ```
 
-`paths` are glob patterns. `~` is expanded, and `**` matches any number of intermediate directories. The longest matching prefix wins when multiple profiles match.
+Target resolution order: the `--repo owner/name` argument → the remote of the repo given to `git -C <path>` → the cwd's remote → (only for operations with no repo target) the cwd's `paths` match. **A write whose profile cannot be resolved by any of these is not executed** (fail-closed). `GOSPELO_GITHUB_IDENTITY_SKIP=1` bypasses the guard once, explicitly; `GOSPELO_GITHUB_IDENTITY_QUIET=1` suppresses status output.
 
-## Enforcement (optional)
+Sample configs live in [examples/](https://github.com/gospelo-dev/gospelo-github-identity/tree/main/examples); the schema is documented in the [config format reference](https://github.com/gospelo-dev/gospelo-github-identity/blob/main/docs/manual/en/config-format.md).
 
-`check` / `switch` are advisory. To actively *block* wrong-identity writes — useful during automation or autonomous agent runs — install the guard:
+## Assumptions and limits (an honest line)
 
-```bash
-# Shadow `gh` (add `git` with --tools gh,git) with a PATH shim that runs the
-# identity check before every write (gh release/pr/repo create, git push, ...).
-gospelo-identity install-guard --tools gh
-export PATH="$HOME/.gospelo-identity/bin:$PATH"   # add to ~/.zshrc / ~/.bashrc
-```
-
-Now a `gh release create` / `git push` under a matched profile with the wrong active account is **blocked** (exit 1, real binary never runs); read-only commands pass through untouched. Outside any profile, or with no config, the real command always runs — the guard never breaks unrelated work. Per-write status is printed to stderr (silence with `GOSPELO_IDENTITY_QUIET=1`; bypass once with `GOSPELO_IDENTITY_SKIP=1`).
-
-> A PATH shim only catches **name-based** calls; `/usr/bin/git push` bypasses it. It stops *accidental* wrong-identity writes, not an adversarial process — layer an OS sandbox for that.
-
-Separately, strip `Co-Authored-By` trailers from every commit message via a global `commit-msg` hook (it chains to your existing repo hooks):
-
-```bash
-gospelo-identity install-commit-hook
-```
-
-See the [CLI Reference](https://github.com/gospelo-dev/identity/blob/main/docs/manual/en/cli-reference.md#enforcement-guard-ghgit-path-shim) for details and `uninstall-*` commands.
+- What it protects against is **accidental** wrong identity. Defense against adversarial processes is the job of OS sandboxing, outside this tool's scope
+- Push authentication holds together with an **SSH workflow** (host-aliased remotes + `IdentitiesOnly yes`). `doctor` detects bare `git@github.com` remotes and aliases with no pinned key
+- Token injection assumes each account is logged into the keyring via `gh auth login` (missing logins are caught by `doctor`)
+- A process that reads the credential store directly cannot be stopped (→ the territory of OS sandboxes / dedicated users)
 
 ## Troubleshooting
 
-### `switch` says OK, but pushes/releases still go to the wrong account (stale keyring credential)
+### The guard blocks a write (`unknown owner`)
 
-**Symptom.** `gospelo-identity switch <profile>` (or `gh auth switch`) reports success and `gh auth status` shows the expected account as *active*, yet `git push` / `gh release` / `gh pr` act as a **different** account.
+The target repo's owner is not declared in any profile's `owners`. This is fail-closed working as intended. Add the owner to the right profile in your config — or, for a deliberate one-off, run with `GOSPELO_GITHUB_IDENTITY_SKIP=1`.
 
-**Root cause.** `gh` stores each account's token in the OS keyring. The credential saved under one account name can become **stale or cross-wired** to another account's token (e.g. after re-running `gh auth login` across multiple profiles). `gh auth switch` only flips the *active label* in `~/.config/gh/hosts.yml`; it does not re-validate the token. So the active account says `you-personal` while the token still authenticates as `you-work`.
+### `switch` says "OK" but the live identity is another account (stale keyring credentials)
 
-**Why labels lie.** The authoritative identity is **`gh api user`** (the account the token actually belongs to), *not* the active label printed by `gh auth status`.
-
-**Detection (built in).** `gospelo-identity check` already resolves the real identity via `gh api user`, and `gospelo-identity switch` now **verifies the switch took effect at the token level** — if the active token authenticates as someone other than the target after switching, it reports `NG ... keyring mismatch` and exits non-zero instead of falsely claiming success.
-
-**Fix (re-login the affected account):**
+`gh auth switch` only flips the active label in `hosts.yml`; it never re-validates the token. The real identity is **`gh api user`** (the account the token actually belongs to). `check` has always compared against the real token, and `switch` verifies at the token level after switching — on mismatch it reports `NG ... keyring mismatch` and exits non-zero. Fix:
 
 ```bash
 gh auth logout --hostname github.com --user <account>
-gh auth login  --hostname github.com          # authenticate as <account> (browser)
-gospelo-identity check                         # [gh CLI] should now be OK
-gh api user --jq .login                        # confirms the real identity
+gh auth login  --hostname github.com          # authenticate in the browser as <account>
+gospelo-github-identity check
 ```
 
 ### `no profile matched`
 
-The current directory is outside every profile's `paths` and no `default_profile` is set. Add a matching glob or a `default_profile` to your config.
+An operation with no repo target, and the cwd matches no profile's `paths`. Add a matching glob or set `default_profile`.
 
-## Exit Codes
+## Exit codes
 
 | Code | Meaning |
 |---|---|
 | `0` | Success / match |
-| `1` | Expected condition not met (mismatch / no profile matched / not found) |
-| `2` | Tool error (config missing, invalid YAML, external tool failure) |
+| `1` | Expected condition not met (mismatch / refusal by fail-closed / no matching profile, etc.) |
+| `2` | Tool error (missing config, invalid YAML, external tool failure, etc.) |
 
 ## Documentation
 
-- [Quick Start](https://github.com/gospelo-dev/identity/blob/main/docs/manual/en/quick-start.md)
-- [CLI Reference](https://github.com/gospelo-dev/identity/blob/main/docs/manual/en/cli-reference.md)
-- [Config Format](https://github.com/gospelo-dev/identity/blob/main/docs/manual/en/config-format.md)
-- [Shell Integration](https://github.com/gospelo-dev/identity/blob/main/docs/manual/en/shell-integration.md)
+- [Quick start](https://github.com/gospelo-dev/gospelo-github-identity/blob/main/docs/manual/en/quick-start.md)
+- [CLI reference](https://github.com/gospelo-dev/gospelo-github-identity/blob/main/docs/manual/en/cli-reference.md)
+- [Config format](https://github.com/gospelo-dev/gospelo-github-identity/blob/main/docs/manual/en/config-format.md)
+- [Shell integration](https://github.com/gospelo-dev/gospelo-github-identity/blob/main/docs/manual/en/shell-integration.md)
+- [Architecture design (enforce + fail-closed)](https://github.com/gospelo-dev/gospelo-github-identity/blob/main/development/docs/architecture-enforce-fail-closed.md)
 
-Japanese documentation is available under `docs/manual/ja/` (see [README_ja.md](https://github.com/gospelo-dev/identity/blob/main/README_ja.md)).
+The Japanese manual lives in [`docs/manual/ja/`](https://github.com/gospelo-dev/gospelo-github-identity/tree/main/docs/manual/ja) (see also [README_ja.md](https://github.com/gospelo-dev/gospelo-github-identity/blob/main/README_ja.md)).
 
-## Agent Skills
+## Agent skills
 
-Auto-protective skills for AI coding agents that run `gospelo-identity check`
-**before** any write-to-remote operation (push / PR / release / package
-publish) and stop the operation on mismatch. See
-[`skills/README.md`](https://github.com/gospelo-dev/identity/blob/main/skills/README.md) for an overview.
+On top of the guard (the enforcement layer), these skills add a defense-in-depth check the agent runs on itself: `gospelo-github-identity check` fires automatically **before write operations** — `git push`, PR creation, releases, package publishing — and stops the operation on mismatch. See [`skills/README.md`](https://github.com/gospelo-dev/gospelo-github-identity/blob/main/skills/README.md).
 
-- [Claude Code skill](https://github.com/gospelo-dev/identity/tree/main/skills/claude) — drop into `.claude/skills/gospelo-identity-check/`
-- [GitHub Copilot skill](https://github.com/gospelo-dev/identity/tree/main/skills/copilot) — drop into `.github/copilot/skills/gospelo-identity-check/` (path subject to change as Copilot's skill spec evolves)
+- [Claude Code skill](https://github.com/gospelo-dev/gospelo-github-identity/tree/main/skills/claude) — install under `.claude/skills/gospelo-github-identity-check/`
+- [GitHub Copilot skill](https://github.com/gospelo-dev/gospelo-github-identity/tree/main/skills/copilot) — install under `.github/copilot/skills/gospelo-github-identity-check/` (subject to change as Copilot's skill spec evolves)
 
 ## License
 
-MIT — free for commercial use. The `config.yml` you author is yours. See [LICENSE.md](https://github.com/gospelo-dev/identity/blob/main/LICENSE.md) for details.
+MIT — free to use, including commercially. You own the copyright of any `config.yml` you write. See [LICENSE.md](https://github.com/gospelo-dev/gospelo-github-identity/blob/main/LICENSE.md) for details.

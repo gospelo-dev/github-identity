@@ -1,10 +1,10 @@
-# gospelo-identity ドキュメント
+# gospelo-github-identity ドキュメント
 
-ディレクトリ連動 git/gh CLI アイデンティティガード `gospelo-identity` のドキュメント索引。
+ディレクトリ連動 git/gh CLI アイデンティティガード `gospelo-github-identity` のドキュメント索引。
 
 ## このドキュメントについて
 
-gospelo-identity は、現在の作業ディレクトリから「期待される profile」を解決し、ローカル `git config` と `gh` CLI のアクティブアカウントが一致しているかを検証・切替する CLI ツール。複数の GitHub アカウント（個人 OSS / 業務 / クライアント）を使い分ける開発者の取り違え事故を防ぎます。
+gospelo-github-identity は、現在の作業ディレクトリから「期待される profile」を解決し、ローカル `git config` と `gh` CLI のアクティブアカウントが一致しているかを検証・切替する CLI ツール。複数の GitHub アカウント（個人 OSS / 業務 / クライアント）を使い分ける開発者の取り違え事故を防ぎます。
 
 対象読者:
 - **利用者**: 複数アカウントを安全に運用したい開発者 → [クイックスタート](quick-start.md)

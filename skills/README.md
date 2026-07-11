@@ -1,4 +1,4 @@
-# gospelo-identity Agent Skills
+# gospelo-github-identity Agent Skills
 
 Auto-protective skills for AI coding agents (Claude Code, GitHub Copilot, etc.).
 
@@ -6,9 +6,9 @@ Auto-protective skills for AI coding agents (Claude Code, GitHub Copilot, etc.).
 
 When you ask your AI coding agent to push code, create a PR, publish a package,
 or do any "write to remote" operation, this skill automatically runs
-`gospelo-identity check` in the current working directory and verifies that the
+`gospelo-github-identity check` in the current working directory and verifies that the
 local `git config` and active `gh` CLI account match the expected profile (per
-`~/.config/gospelo-identity/config.yml`).
+`~/.config/gospelo-github-identity/config.yml`).
 
 If there is a mismatch (for example, you are about to push from your work
 account while inside a personal OSS repo), the skill **stops the operation**
@@ -21,7 +21,7 @@ add zero friction when your identity is already correct.
 
 | Agent | Skill file | Installation target |
 |---|---|---|
-| Claude Code | [`claude/skill.md`](claude/skill.md) | `.claude/skills/gospelo-identity-check/skill.md` (project) or `~/.claude/skills/gospelo-identity-check/skill.md` (global) |
+| Claude Code | [`claude/skill.md`](claude/skill.md) | `.claude/skills/gospelo-github-identity-check/skill.md` (project) or `~/.claude/skills/gospelo-github-identity-check/skill.md` (global) |
 | GitHub Copilot | [`copilot/skill.md`](copilot/skill.md) | See `copilot/README.md` (Copilot skill spec is still evolving) |
 
 Both skill files are intentionally similar in body. Only the frontmatter
@@ -33,14 +33,14 @@ Both skill files are intentionally similar in body. Only the frontmatter
 
 ```bash
 # Per-project (recommended)
-mkdir -p .claude/skills/gospelo-identity-check
-cp /path/to/gospelo-identity/skills/claude/skill.md \
-   .claude/skills/gospelo-identity-check/skill.md
+mkdir -p .claude/skills/gospelo-github-identity-check
+cp /path/to/gospelo-github-identity/skills/claude/skill.md \
+   .claude/skills/gospelo-github-identity-check/skill.md
 
 # Global (applies to every project Claude Code opens)
-mkdir -p ~/.claude/skills/gospelo-identity-check
-cp /path/to/gospelo-identity/skills/claude/skill.md \
-   ~/.claude/skills/gospelo-identity-check/skill.md
+mkdir -p ~/.claude/skills/gospelo-github-identity-check
+cp /path/to/gospelo-github-identity/skills/claude/skill.md \
+   ~/.claude/skills/gospelo-github-identity-check/skill.md
 ```
 
 After installing, restart Claude Code (or run `/skills reload` if available)
@@ -55,12 +55,12 @@ Markdown, so it can also be used as a system prompt fragment for other agents.
 
 ## Prerequisites
 
-- `gospelo-identity` CLI installed and on `PATH`:
+- `gospelo-github-identity` CLI installed and on `PATH`:
   ```bash
-  pip install gospelo-identity
+  pip install gospelo-github-identity
   ```
-- A configured `~/.config/gospelo-identity/config.yml` (see project root
-  README for examples; or run `gospelo-identity init`)
+- A configured `~/.config/gospelo-github-identity/config.yml` (see project root
+  README for examples; or run `gospelo-github-identity init`)
 - An AI coding agent that supports Agent Skills:
   - Claude Code 1.x or later
   - GitHub Copilot (Workspace / Chat with skills support)
@@ -73,11 +73,11 @@ Ask your agent something like:
 
 Expected behavior:
 
-- **Identity matches**: the agent runs `gospelo-identity check`, sees exit
+- **Identity matches**: the agent runs `gospelo-github-identity check`, sees exit
   code `0`, and proceeds with `git push` without further prompting.
-- **Identity mismatched**: the agent runs `gospelo-identity check`, sees exit
+- **Identity mismatched**: the agent runs `gospelo-github-identity check`, sees exit
   code `1`, **stops** before `git push`, and displays the expected profile,
-  the mismatched fields, and the `gospelo-identity switch <profile>` command
+  the mismatched fields, and the `gospelo-github-identity switch <profile>` command
   to fix it.
 - **No config / tool error**: the agent surfaces the exit-code-`2` error
   message directly to you and asks how to proceed.
@@ -95,5 +95,5 @@ config is missing or unreadable — it must surface the error.
 
 ## Related
 
-- [gospelo-identity CLI README](../README.md)
+- [gospelo-github-identity CLI README](../README.md)
 - [Shell integration guide](../docs/manual/ja/shell-integration.md)

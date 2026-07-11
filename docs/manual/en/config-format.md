@@ -2,7 +2,7 @@
 
 ## Samples
 
-Three sample configurations are available under [examples/](https://github.com/gospelo-dev/identity/tree/main/examples):
+Three sample configurations are available under [examples/](https://github.com/gospelo-dev/gospelo-github-identity/tree/main/examples):
 
 - `config.yml` — basic 2-profile setup with comments
 - `config.minimal.yml` — minimal example with a single profile
@@ -11,20 +11,20 @@ Three sample configurations are available under [examples/](https://github.com/g
 You can also retrieve the bundled template from the CLI:
 
 ```bash
-# Copy bundled template to ~/.config/gospelo-identity/config.yml + open in $EDITOR
-gospelo-identity init --from-template
+# Copy bundled template to ~/.config/gospelo-github-identity/config.yml + open in $EDITOR
+gospelo-github-identity init --from-template
 
 # Print bundled template to stdout (for piping)
-gospelo-identity init --show-example > my-config.yml
+gospelo-github-identity init --show-example > my-config.yml
 ```
 
 ## Location
 
 ```
-~/.config/gospelo-identity/config.yml
+~/.config/gospelo-github-identity/config.yml
 ```
 
-The `GOSPELO_IDENTITY_CONFIG` environment variable can point to an alternate path (useful for tests or for switching between multiple profile sets).
+The `GOSPELO_GITHUB_IDENTITY_CONFIG` environment variable can point to an alternate path (useful for tests or for switching between multiple profile sets).
 
 ## Full Schema
 
@@ -39,6 +39,9 @@ profiles:
       user.email: <string>
     gh:
       account: <string>
+    ssh:                   # optional; declaring the block enables the SSH-login check
+      login: <string>      # optional; defaults to gh.account
+      host: <string>       # optional; defaults to the host derived from the origin remote
     paths:
       - <glob>
       - <glob>
@@ -73,6 +76,23 @@ Value applied to `git config user.email`.
 #### profiles.\<name\>.gh.account (required)
 
 GitHub login passed to `gh auth switch -u <account>`. You must have authenticated this account beforehand with `gh auth login --hostname github.com`.
+
+#### profiles.\<name\>.ssh (optional)
+
+Declaring an `ssh` block adds an **SSH-login verification** row to `check`. It closes the blind spot where `git config` and `gh` look correct but `git push` authenticates as a *different* account because `ssh-agent` offers another account's key first (e.g. with `IdentitiesOnly no`).
+
+`check` runs `ssh -T` (a read-only, connect-only probe) against the SSH host that this repo's `origin` remote resolves to, and compares the `<login>` in GitHub's `Hi <login>!` banner against the expected login.
+
+- `login` (optional) — the expected GitHub login. Defaults to `gh.account` (usually the same GitHub identity, so `ssh: {}` alone is enough).
+- `host` (optional) — force the host to probe. Defaults to the host derived from the `origin` URL (an SSH-alias host like `github.com-work` is preserved verbatim).
+
+Outcome:
+
+- Authenticated login matches the expected login → `OK`
+- Mismatch → `NG` (`check` exits 1 and prints the fix: switch to HTTPS, or pin the key via an `~/.ssh/config` host alias)
+- `origin` is not SSH (HTTPS / no remote), or the host is unreachable / no key set up / `ssh` not installed → `--` (skipped, **never a failure**)
+
+> A profile with no `ssh` block behaves exactly as before — no SSH verification and no network access.
 
 #### profiles.\<name\>.paths
 
@@ -130,7 +150,7 @@ When `cwd` is `~/projects/work/oss-forks/some-repo`, both patterns match, but `f
 
 ## Permissions
 
-- Directory `~/.config/gospelo-identity/` is created with mode `0700`
+- Directory `~/.config/gospelo-github-identity/` is created with mode `0700`
 - File `config.yml` is set to mode `0600` after saving (failure to chmod is not treated as an error)
 
 ## Error Handling
@@ -142,4 +162,5 @@ The CLI exits with code 2 when the config is in any of the following states:
 - `version` is not `"1"`
 - `profiles` is empty or missing
 - A required key inside a profile (`git.user.name` / `git.user.email` / `gh.account`) is missing
+- `ssh` is not a mapping, or `ssh.login` / `ssh.host` is an empty string
 - `default_profile` references a name not present in `profiles`

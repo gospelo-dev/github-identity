@@ -1,10 +1,10 @@
-# gospelo-identity Documentation
+# gospelo-github-identity Documentation
 
-Documentation index for `gospelo-identity`, the directory-aware git/gh CLI identity guard.
+Documentation index for `gospelo-github-identity`, the directory-aware git/gh CLI identity guard.
 
 ## About This Documentation
 
-gospelo-identity is a CLI tool that resolves the "expected profile" from your current working directory and verifies that the local `git config` and the active `gh` CLI account match it (switching them when they do not). It prevents account mix-ups for developers who juggle multiple GitHub accounts (personal OSS, employer, client work).
+gospelo-github-identity is a CLI tool that resolves the "expected profile" from your current working directory and verifies that the local `git config` and the active `gh` CLI account match it (switching them when they do not). It prevents account mix-ups for developers who juggle multiple GitHub accounts (personal OSS, employer, client work).
 
 Intended audience:
 - **Users**: developers who want to operate multiple accounts safely -> [Quick Start](quick-start.md)

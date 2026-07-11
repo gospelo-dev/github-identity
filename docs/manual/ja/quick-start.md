@@ -9,40 +9,40 @@
 ## インストール
 
 ```bash
-pip install gospelo-identity
+pip install gospelo-github-identity
 ```
 
 確認:
 
 ```bash
-gospelo-identity --version
+gospelo-github-identity --version
 ```
 
 ## 1. 設定を作る
 
-対話的に `~/.config/gospelo-identity/config.yml` を作成:
+対話的に `~/.config/gospelo-github-identity/config.yml` を作成:
 
 ```bash
-gospelo-identity init
+gospelo-github-identity init
 ```
 
 対話入力をスキップしたい場合は、同梱テンプレートをコピーして `$EDITOR` で開く方法もあります:
 
 ```bash
 # 同梱テンプレートをコピー + $EDITOR (既定: vi) で開く
-gospelo-identity init --from-template
+gospelo-github-identity init --from-template
 
 # 同梱テンプレートを stdout に出力 (パイプ用)
-gospelo-identity init --show-example > ~/.config/gospelo-identity/config.yml
+gospelo-github-identity init --show-example > ~/.config/gospelo-github-identity/config.yml
 ```
 
-サンプル設定 (basic / minimal / advanced) は [examples/](https://github.com/gospelo-dev/identity/tree/main/examples) を参照してください。
+サンプル設定 (basic / minimal / advanced) は [examples/](https://github.com/gospelo-dev/gospelo-github-identity/tree/main/examples) を参照してください。
 
 入力例:
 
 ```
-Welcome to gospelo-identity init.
-Config file will be saved to: /Users/you/.config/gospelo-identity/config.yml
+Welcome to gospelo-github-identity init.
+Config file will be saved to: /Users/you/.config/gospelo-github-identity/config.yml
 
 Profile name: oss
 Description (optional): Personal OSS work
@@ -66,13 +66,13 @@ Paths (one per line, empty line to finish):
 Add another profile? [y/N]: n
 Default profile (one of: oss, work) [leave blank for none]: oss
 
-Saved: /Users/you/.config/gospelo-identity/config.yml
+Saved: /Users/you/.config/gospelo-github-identity/config.yml
 ```
 
 ## 2. 確認
 
 ```bash
-gospelo-identity list
+gospelo-github-identity list
 ```
 
 表で profile 一覧が表示されます。
@@ -83,7 +83,7 @@ OSS リポジトリに移動して:
 
 ```bash
 cd ~/projects/gospelo-dev/your-repo
-gospelo-identity check
+gospelo-github-identity check
 ```
 
 `OK: identity matches profile 'oss'.` が出れば現在の git/gh 設定は profile と一致しています。`NG` の行があれば取り違えています。
@@ -91,7 +91,7 @@ gospelo-identity check
 ## 4. 一括で切替
 
 ```bash
-gospelo-identity switch oss
+gospelo-github-identity switch oss
 ```
 
 ローカル `git config user.name` / `user.email` と `gh auth switch -u <account>` を一括適用します。

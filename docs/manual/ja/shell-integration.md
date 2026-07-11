@@ -1,13 +1,13 @@
 # シェル統合ガイド
 
-`gospelo-identity` をシェルや既存の開発フローに組み込むレシピ集です。
+`gospelo-github-identity` をシェルや既存の開発フローに組み込むレシピ集です。
 
 ## PS1 / プロンプト表示
 
 ### bash
 
 ```bash
-PS1='$(gospelo-identity prompt --format=ps1 --show-mismatch) \w \$ '
+PS1='$(gospelo-github-identity prompt --format=ps1 --show-mismatch) \w \$ '
 ```
 
 `--show-mismatch` を付けると、git/gh の実状態が profile と一致していない場合にプロンプトが赤く `[oss !]` のように表示されます。
@@ -21,7 +21,7 @@ setopt PROMPT_SUBST
 
 _identity_prompt() {
   local label
-  label=$(gospelo-identity prompt --format=plain --show-mismatch)
+  label=$(gospelo-github-identity prompt --format=plain --show-mismatch)
   if [[ -z "$label" ]]; then
     return
   fi
@@ -39,7 +39,7 @@ PROMPT='$(_identity_prompt) %~ %# '
 
 ```fish
 function fish_right_prompt
-  set -l label (gospelo-identity prompt --format=plain --show-mismatch)
+  set -l label (gospelo-github-identity prompt --format=plain --show-mismatch)
   if test -n "$label"
     if string match -q "*!*" -- $label
       set_color red
@@ -52,7 +52,7 @@ function fish_right_prompt
 end
 ```
 
-> **注意**: `gospelo-identity prompt` は config 不在時にも黙って空文字列を返すため、シェルの動作を止めません。例外を流したい場合は `check` を別途呼び出してください。
+> **注意**: `gospelo-github-identity prompt` は config 不在時にも黙って空文字列を返すため、シェルの動作を止めません。例外を流したい場合は `check` を別途呼び出してください。
 
 ## direnv 統合
 
@@ -60,7 +60,7 @@ end
 
 ```bash
 # .envrc
-gospelo-identity check >&2 || echo "WARNING: identity mismatch (see above)" >&2
+gospelo-github-identity check >&2 || echo "WARNING: identity mismatch (see above)" >&2
 ```
 
 `direnv allow` を実行しておけば、`cd` するたびに自動で表示されます。
@@ -71,12 +71,12 @@ gospelo-identity check >&2 || echo "WARNING: identity mismatch (see above)" >&2
 
 ```bash
 #!/usr/bin/env bash
-gospelo-identity check
+gospelo-github-identity check
 status=$?
 if [[ $status -ne 0 ]]; then
   echo "" >&2
   echo "Identity check failed. Refusing to commit." >&2
-  echo "Run 'gospelo-identity switch <profile>' to fix." >&2
+  echo "Run 'gospelo-github-identity switch <profile>' to fix." >&2
   exit 1
 fi
 ```
@@ -88,9 +88,9 @@ fi
 repos:
   - repo: local
     hooks:
-      - id: gospelo-identity-check
-        name: gospelo-identity check
-        entry: gospelo-identity check
+      - id: gospelo-github-identity-check
+        name: gospelo-github-identity check
+        entry: gospelo-github-identity check
         language: system
         pass_filenames: false
         stages: [commit]
@@ -98,7 +98,7 @@ repos:
 
 ## CI で使わない
 
-gospelo-identity は **ローカル開発時の取り違え防止** が目的です。CI 環境では git config / gh CLI のアカウントは固定の bot アカウントが期待されるため、`check` を走らせる意味は通常ありません。CI スクリプトには組み込まないでください。
+gospelo-github-identity は **ローカル開発時の取り違え防止** が目的です。CI 環境では git config / gh CLI のアカウントは固定の bot アカウントが期待されるため、`check` を走らせる意味は通常ありません。CI スクリプトには組み込まないでください。
 
 ## トラブルシューティング
 
@@ -115,7 +115,7 @@ gospelo-identity は **ローカル開発時の取り違え防止** が目的で
 `detect` で実際にどの profile が選ばれるかを確認できます:
 
 ```bash
-gospelo-identity detect --cwd ~/projects/oss/foo
+gospelo-github-identity detect --cwd ~/projects/oss/foo
 ```
 
 config の `paths` が `~` 始まりであること、`**` を入れているか（再帰マッチが必要な場合）を確認してください。

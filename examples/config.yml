@@ -15,7 +15,7 @@
 # - gospelo-github-identity check で git/gh の現状と期待を照合
 # - gospelo-github-identity switch <profile> で git config + gh CLI を一括切替
 #
-# 詳細: https://github.com/gospelo-dev/gospelo-github-identity/blob/main/docs/manual/ja/config-format.md
+# 詳細: https://github.com/gospelo-dev/github-identity/blob/main/docs/manual/ja/config-format.md
 
 version: "1"
 

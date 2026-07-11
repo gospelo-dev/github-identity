@@ -39,7 +39,7 @@ Non-interactive modes:
 
 `--from-template` and `--show-example` cannot be combined (exit 2).
 
-Three sample configurations (basic / minimal / advanced) are also available under [examples/](https://github.com/gospelo-dev/gospelo-github-identity/tree/main/examples).
+Three sample configurations (basic / minimal / advanced) are also available under [examples/](https://github.com/gospelo-dev/github-identity/tree/main/examples).
 
 | Exit code | Meaning |
 |---|---|

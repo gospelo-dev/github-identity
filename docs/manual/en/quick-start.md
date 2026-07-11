@@ -36,7 +36,7 @@ gospelo-github-identity init --from-template
 gospelo-github-identity init --show-example > ~/.config/gospelo-github-identity/config.yml
 ```
 
-Sample configurations (basic / minimal / advanced) are available under [examples/](https://github.com/gospelo-dev/gospelo-github-identity/tree/main/examples).
+Sample configurations (basic / minimal / advanced) are available under [examples/](https://github.com/gospelo-dev/github-identity/tree/main/examples).
 
 Example session:
 

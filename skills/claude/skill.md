@@ -181,6 +181,6 @@ The skill file itself is the entire skill — no scripts to vendor; the
 
 ## See also
 
-- [gospelo-github-identity GitHub](https://github.com/gospelo-dev/gospelo-github-identity)
-- [Shell integration (direnv, PS1)](https://github.com/gospelo-dev/gospelo-github-identity/blob/main/docs/manual/ja/shell-integration.md)
-- [CLI reference](https://github.com/gospelo-dev/gospelo-github-identity/blob/main/docs/manual/ja/cli-reference.md)
+- [gospelo-github-identity GitHub](https://github.com/gospelo-dev/github-identity)
+- [Shell integration (direnv, PS1)](https://github.com/gospelo-dev/github-identity/blob/main/docs/manual/ja/shell-integration.md)
+- [CLI reference](https://github.com/gospelo-dev/github-identity/blob/main/docs/manual/ja/cli-reference.md)

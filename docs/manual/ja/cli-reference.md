@@ -39,7 +39,7 @@ gospelo-github-identity init [--force] [--from-template] [--show-example]
 
 `--from-template` と `--show-example` は同時指定できません (exit 2)。
 
-サンプル設定は [examples/](https://github.com/gospelo-dev/gospelo-github-identity/tree/main/examples) にも 3 種 (basic / minimal / advanced) 用意しています。
+サンプル設定は [examples/](https://github.com/gospelo-dev/github-identity/tree/main/examples) にも 3 種 (basic / minimal / advanced) 用意しています。
 
 | 終了コード | 意味 |
 |---|---|

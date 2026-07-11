@@ -1,12 +1,12 @@
-[English](https://github.com/gospelo-dev/gospelo-github-identity/blob/main/README.md)
+[English](https://github.com/gospelo-dev/github-identity/blob/main/README.md)
 
 # gospelo-github-identity
 
 自律エージェントに GitHub 操作を安全に任せるための identity 実行基盤
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/gospelo-dev/gospelo-github-identity/blob/main/LICENSE.md) [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/) [![GitHub CLI](https://img.shields.io/badge/GitHub-gh_CLI-181717.svg?logo=github&logoColor=white)](https://cli.github.com/) [![AI-Agent Safety](https://img.shields.io/badge/AI--Agent-Safety-22c55e.svg)](#なぜ-gospelo-github-identity)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/gospelo-dev/github-identity/blob/main/LICENSE.md) [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/) [![GitHub CLI](https://img.shields.io/badge/GitHub-gh_CLI-181717.svg?logo=github&logoColor=white)](https://cli.github.com/) [![AI-Agent Safety](https://img.shields.io/badge/AI--Agent-Safety-22c55e.svg)](#なぜ-gospelo-github-identity)
 
-![gospelo-github-identity hero](https://raw.githubusercontent.com/gospelo-dev/gospelo-github-identity/main/images/hero.jpg)
+![gospelo-github-identity hero](https://raw.githubusercontent.com/gospelo-dev/github-identity/main/images/hero.jpg)
 
 自律稼働する AI エージェント (Claude Code、Copilot、CI ボット) に GitHub への書き込み — `git push`、`gh pr create`、`gh release` — を任せるための identity 実行基盤。人間のコマンド操作の補助ツールではなく、**エージェントによる `gh` / `git` の外部操作を安全に行うことを目的として設計**されています。
 
@@ -48,7 +48,7 @@ identity は「今いるディレクトリ」ではなく**操作対象の repo*
 2. **enforce** — 検査して警告するのではなく、対象 repo の owner から profile を逆引きし、その profile のトークンを `GH_TOKEN` として本物のコマンドに注入する
 3. **fail-closed** — 対象を解決できない・owner が未宣言・シムを迂回された、のいずれも「誤 identity で成功」ではなく「実行拒否 / 認証エラーで失敗」に落ちる
 
-![gospelo-github-identity アーキテクチャ](https://raw.githubusercontent.com/gospelo-dev/gospelo-github-identity/main/images/README_ja-1.png)
+![gospelo-github-identity アーキテクチャ](https://raw.githubusercontent.com/gospelo-dev/github-identity/main/images/README_ja-1.png)
 
 <details><summary>図のソース (Mermaid)</summary>
 
@@ -137,7 +137,7 @@ gh --repo <owner>/<repo> repo view   # owner に対応する profile のトー�
 | `install-guard` / `uninstall-guard` | `gh` / `git` を PATH シムでシャドウし、対象 repo 基準の identity を強制 |
 | `install-commit-hook` / `uninstall-commit-hook` | `Co-Authored-By` を除去するグローバル `commit-msg` フック |
 
-詳細は [CLI リファレンス](https://github.com/gospelo-dev/gospelo-github-identity/blob/main/docs/manual/ja/cli-reference.md) を参照。
+詳細は [CLI リファレンス](https://github.com/gospelo-dev/github-identity/blob/main/docs/manual/ja/cli-reference.md) を参照。
 
 ## 設定ファイル
 
@@ -172,7 +172,7 @@ profiles:
 
 対象解決の優先順位: `--repo owner/name` 引数 → `git -C <path>` の対象 repo の remote → cwd の remote → (repo 対象を持たない操作のみ) cwd の `paths` マッチ。**どの手段でも profile を引けない書き込みは実行されません** (fail-closed)。`GOSPELO_GITHUB_IDENTITY_SKIP=1` で 1 回だけ明示バイパス、`GOSPELO_GITHUB_IDENTITY_QUIET=1` でステータス出力を抑制できます。
 
-サンプル設定は [examples/](https://github.com/gospelo-dev/gospelo-github-identity/tree/main/examples) に、スキーマの詳細は [設定ファイル仕様](https://github.com/gospelo-dev/gospelo-github-identity/blob/main/docs/manual/ja/config-format.md) にあります。
+サンプル設定は [examples/](https://github.com/gospelo-dev/github-identity/tree/main/examples) に、スキーマの詳細は [設定ファイル仕様](https://github.com/gospelo-dev/github-identity/blob/main/docs/manual/ja/config-format.md) にあります。
 
 ## 前提と限界 (正直な線引き)
 
@@ -211,21 +211,21 @@ repo 対象を持たない操作で、cwd がどの profile の `paths` にも�
 
 ## ドキュメント
 
-- [クイックスタート](https://github.com/gospelo-dev/gospelo-github-identity/blob/main/docs/manual/ja/quick-start.md)
-- [CLI リファレンス](https://github.com/gospelo-dev/gospelo-github-identity/blob/main/docs/manual/ja/cli-reference.md)
-- [設定ファイル仕様](https://github.com/gospelo-dev/gospelo-github-identity/blob/main/docs/manual/ja/config-format.md)
-- [シェル統合ガイド](https://github.com/gospelo-dev/gospelo-github-identity/blob/main/docs/manual/ja/shell-integration.md)
-- [アーキテクチャ設計 (enforce + fail-closed)](https://github.com/gospelo-dev/gospelo-github-identity/blob/main/development/docs/architecture-enforce-fail-closed.md)
+- [クイックスタート](https://github.com/gospelo-dev/github-identity/blob/main/docs/manual/ja/quick-start.md)
+- [CLI リファレンス](https://github.com/gospelo-dev/github-identity/blob/main/docs/manual/ja/cli-reference.md)
+- [設定ファイル仕様](https://github.com/gospelo-dev/github-identity/blob/main/docs/manual/ja/config-format.md)
+- [シェル統合ガイド](https://github.com/gospelo-dev/github-identity/blob/main/docs/manual/ja/shell-integration.md)
+- [アーキテクチャ設計 (enforce + fail-closed)](https://github.com/gospelo-dev/github-identity/blob/main/development/docs/architecture-enforce-fail-closed.md)
 
-英語マニュアルは [`docs/manual/en/`](https://github.com/gospelo-dev/gospelo-github-identity/tree/main/docs/manual/en) にあります ([README.md](https://github.com/gospelo-dev/gospelo-github-identity/blob/main/README.md) も参照)。
+英語マニュアルは [`docs/manual/en/`](https://github.com/gospelo-dev/github-identity/tree/main/docs/manual/en) にあります ([README.md](https://github.com/gospelo-dev/github-identity/blob/main/README.md) も参照)。
 
 ## エージェントスキル
 
-guard (強制層) に加えて、エージェント自身に書き込み前チェックをさせる多層防御用スキル。`git push` / PR 作成 / リリース / パッケージ公開などの**書き込み系操作の前**に `gospelo-github-identity check` を自動実行し、ミスマッチ時は操作を停止します。詳細は [`skills/README.md`](https://github.com/gospelo-dev/gospelo-github-identity/blob/main/skills/README.md) を参照。
+guard (強制層) に加えて、エージェント自身に書き込み前チェックをさせる多層防御用スキル。`git push` / PR 作成 / リリース / パッケージ公開などの**書き込み系操作の前**に `gospelo-github-identity check` を自動実行し、ミスマッチ時は操作を停止します。詳細は [`skills/README.md`](https://github.com/gospelo-dev/github-identity/blob/main/skills/README.md) を参照。
 
-- [Claude Code スキル](https://github.com/gospelo-dev/gospelo-github-identity/tree/main/skills/claude) — `.claude/skills/gospelo-github-identity-check/` 配下に配置
-- [GitHub Copilot スキル](https://github.com/gospelo-dev/gospelo-github-identity/tree/main/skills/copilot) — `.github/copilot/skills/gospelo-github-identity-check/` 配下に配置 (Copilot のスキル仕様により変更の可能性あり)
+- [Claude Code スキル](https://github.com/gospelo-dev/github-identity/tree/main/skills/claude) — `.claude/skills/gospelo-github-identity-check/` 配下に配置
+- [GitHub Copilot スキル](https://github.com/gospelo-dev/github-identity/tree/main/skills/copilot) — `.github/copilot/skills/gospelo-github-identity-check/` 配下に配置 (Copilot のスキル仕様により変更の可能性あり)
 
 ## ライセンス
 
-MIT — 商用利用を含め自由に利用できます。ユーザーが作成した `config.yml` の著作権はユーザーに帰属します。詳細は [LICENSE_ja.md](https://github.com/gospelo-dev/gospelo-github-identity/blob/main/LICENSE_ja.md) を参照。
+MIT — 商用利用を含め自由に利用できます。ユーザーが作成した `config.yml` の著作権はユーザーに帰属します。詳細は [LICENSE_ja.md](https://github.com/gospelo-dev/github-identity/blob/main/LICENSE_ja.md) を参照。

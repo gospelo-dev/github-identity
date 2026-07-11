@@ -2,7 +2,7 @@
 
 ## Samples
 
-Three sample configurations are available under [examples/](https://github.com/gospelo-dev/gospelo-github-identity/tree/main/examples):
+Three sample configurations are available under [examples/](https://github.com/gospelo-dev/github-identity/tree/main/examples):
 
 - `config.yml` — basic 2-profile setup with comments
 - `config.minimal.yml` — minimal example with a single profile

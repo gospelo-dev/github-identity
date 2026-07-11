@@ -46,7 +46,7 @@ dev = [
 gospelo-github-identity = "gospelo_github_identity.cli:main"
 
 [project.urls]
-Repository = "https://github.com/gospelo-dev/gospelo-github-identity"
+Repository = "https://github.com/gospelo-dev/github-identity"
 
 [tool.hatch.build.targets.sdist]
 include = [

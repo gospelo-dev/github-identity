@@ -2,7 +2,7 @@
 
 ## サンプル
 
-[examples/](https://github.com/gospelo-dev/gospelo-github-identity/tree/main/examples) に 3 種類のサンプルがあります:
+[examples/](https://github.com/gospelo-dev/github-identity/tree/main/examples) に 3 種類のサンプルがあります:
 
 - `config.yml` — コメント付きの基本 2 profile 構成
 - `config.minimal.yml` — 1 profile のみの最小例

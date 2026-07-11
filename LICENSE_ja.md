@@ -28,4 +28,4 @@ gospelo-github-identity は、ローカルに設定された git identity およ
 
 ---
 
-> **注:** 法的な効力は英語版 ([LICENSE.md](https://github.com/gospelo-dev/gospelo-github-identity/blob/main/LICENSE.md)) に従います。本文書は参考訳です。
+> **注:** 法的な効力は英語版 ([LICENSE.md](https://github.com/gospelo-dev/github-identity/blob/main/LICENSE.md)) に従います。本文書は参考訳です。

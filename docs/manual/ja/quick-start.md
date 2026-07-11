@@ -36,7 +36,7 @@ gospelo-github-identity init --from-template
 gospelo-github-identity init --show-example > ~/.config/gospelo-github-identity/config.yml
 ```
 
-サンプル設定 (basic / minimal / advanced) は [examples/](https://github.com/gospelo-dev/gospelo-github-identity/tree/main/examples) を参照してください。
+サンプル設定 (basic / minimal / advanced) は [examples/](https://github.com/gospelo-dev/github-identity/tree/main/examples) を参照してください。
 
 入力例:
 

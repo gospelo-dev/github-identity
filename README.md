@@ -1,12 +1,12 @@
-[日本語版](https://github.com/gospelo-dev/gospelo-github-identity/blob/main/README_ja.md)
+[日本語版](https://github.com/gospelo-dev/github-identity/blob/main/README_ja.md)
 
 # gospelo-github-identity
 
 An identity runtime for safely delegating GitHub operations to autonomous AI agents
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/gospelo-dev/gospelo-github-identity/blob/main/LICENSE.md) [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/) [![GitHub CLI](https://img.shields.io/badge/GitHub-gh_CLI-181717.svg?logo=github&logoColor=white)](https://cli.github.com/) [![AI-Agent Safety](https://img.shields.io/badge/AI--Agent-Safety-22c55e.svg)](#why-gospelo-github-identity)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/gospelo-dev/github-identity/blob/main/LICENSE.md) [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/) [![GitHub CLI](https://img.shields.io/badge/GitHub-gh_CLI-181717.svg?logo=github&logoColor=white)](https://cli.github.com/) [![AI-Agent Safety](https://img.shields.io/badge/AI--Agent-Safety-22c55e.svg)](#why-gospelo-github-identity)
 
-![gospelo-github-identity hero](https://raw.githubusercontent.com/gospelo-dev/gospelo-github-identity/main/images/hero.jpg)
+![gospelo-github-identity hero](https://raw.githubusercontent.com/gospelo-dev/github-identity/main/images/hero.jpg)
 
 An identity runtime for entrusting GitHub writes — `git push`, `gh pr create`, `gh release` — to autonomously operating AI agents (Claude Code, Copilot, CI bots). It is not a convenience helper for human command-line use: it is **designed for agents operating `gh` / `git` against the outside world, safely**.
 
@@ -48,7 +48,7 @@ Three design principles:
 2. **enforce** — instead of inspecting and warning, the guard reverse-maps the target repo's owner to a profile and injects that profile's token as `GH_TOKEN` into the real command
 3. **fail-closed** — an unresolvable target, an undeclared owner, or a bypassed shim all degrade to "refuse to run / fail with an auth error", never to "succeed with the wrong identity"
 
-![gospelo-github-identity architecture](https://raw.githubusercontent.com/gospelo-dev/gospelo-github-identity/main/images/README-1.png)
+![gospelo-github-identity architecture](https://raw.githubusercontent.com/gospelo-dev/github-identity/main/images/README-1.png)
 
 <details><summary>Diagram source (Mermaid)</summary>
 
@@ -137,7 +137,7 @@ No agent-side configuration is needed (the PATH shim intercepts every `gh` / `gi
 | `install-guard` / `uninstall-guard` | Shadow `gh` / `git` with PATH shims that enforce target-repo-based identity |
 | `install-commit-hook` / `uninstall-commit-hook` | Global `commit-msg` hook that strips `Co-Authored-By` trailers |
 
-See the [CLI reference](https://github.com/gospelo-dev/gospelo-github-identity/blob/main/docs/manual/en/cli-reference.md) for details.
+See the [CLI reference](https://github.com/gospelo-dev/github-identity/blob/main/docs/manual/en/cli-reference.md) for details.
 
 ## Configuration
 
@@ -172,7 +172,7 @@ profiles:
 
 Target resolution order: the `--repo owner/name` argument → the remote of the repo given to `git -C <path>` → the cwd's remote → (only for operations with no repo target) the cwd's `paths` match. **A write whose profile cannot be resolved by any of these is not executed** (fail-closed). `GOSPELO_GITHUB_IDENTITY_SKIP=1` bypasses the guard once, explicitly; `GOSPELO_GITHUB_IDENTITY_QUIET=1` suppresses status output.
 
-Sample configs live in [examples/](https://github.com/gospelo-dev/gospelo-github-identity/tree/main/examples); the schema is documented in the [config format reference](https://github.com/gospelo-dev/gospelo-github-identity/blob/main/docs/manual/en/config-format.md).
+Sample configs live in [examples/](https://github.com/gospelo-dev/github-identity/tree/main/examples); the schema is documented in the [config format reference](https://github.com/gospelo-dev/github-identity/blob/main/docs/manual/en/config-format.md).
 
 ## Assumptions and limits (an honest line)
 
@@ -211,21 +211,21 @@ An operation with no repo target, and the cwd matches no profile's `paths`. Add 
 
 ## Documentation
 
-- [Quick start](https://github.com/gospelo-dev/gospelo-github-identity/blob/main/docs/manual/en/quick-start.md)
-- [CLI reference](https://github.com/gospelo-dev/gospelo-github-identity/blob/main/docs/manual/en/cli-reference.md)
-- [Config format](https://github.com/gospelo-dev/gospelo-github-identity/blob/main/docs/manual/en/config-format.md)
-- [Shell integration](https://github.com/gospelo-dev/gospelo-github-identity/blob/main/docs/manual/en/shell-integration.md)
-- [Architecture design (enforce + fail-closed)](https://github.com/gospelo-dev/gospelo-github-identity/blob/main/development/docs/architecture-enforce-fail-closed.md)
+- [Quick start](https://github.com/gospelo-dev/github-identity/blob/main/docs/manual/en/quick-start.md)
+- [CLI reference](https://github.com/gospelo-dev/github-identity/blob/main/docs/manual/en/cli-reference.md)
+- [Config format](https://github.com/gospelo-dev/github-identity/blob/main/docs/manual/en/config-format.md)
+- [Shell integration](https://github.com/gospelo-dev/github-identity/blob/main/docs/manual/en/shell-integration.md)
+- [Architecture design (enforce + fail-closed)](https://github.com/gospelo-dev/github-identity/blob/main/development/docs/architecture-enforce-fail-closed.md)
 
-The Japanese manual lives in [`docs/manual/ja/`](https://github.com/gospelo-dev/gospelo-github-identity/tree/main/docs/manual/ja) (see also [README_ja.md](https://github.com/gospelo-dev/gospelo-github-identity/blob/main/README_ja.md)).
+The Japanese manual lives in [`docs/manual/ja/`](https://github.com/gospelo-dev/github-identity/tree/main/docs/manual/ja) (see also [README_ja.md](https://github.com/gospelo-dev/github-identity/blob/main/README_ja.md)).
 
 ## Agent skills
 
-On top of the guard (the enforcement layer), these skills add a defense-in-depth check the agent runs on itself: `gospelo-github-identity check` fires automatically **before write operations** — `git push`, PR creation, releases, package publishing — and stops the operation on mismatch. See [`skills/README.md`](https://github.com/gospelo-dev/gospelo-github-identity/blob/main/skills/README.md).
+On top of the guard (the enforcement layer), these skills add a defense-in-depth check the agent runs on itself: `gospelo-github-identity check` fires automatically **before write operations** — `git push`, PR creation, releases, package publishing — and stops the operation on mismatch. See [`skills/README.md`](https://github.com/gospelo-dev/github-identity/blob/main/skills/README.md).
 
-- [Claude Code skill](https://github.com/gospelo-dev/gospelo-github-identity/tree/main/skills/claude) — install under `.claude/skills/gospelo-github-identity-check/`
-- [GitHub Copilot skill](https://github.com/gospelo-dev/gospelo-github-identity/tree/main/skills/copilot) — install under `.github/copilot/skills/gospelo-github-identity-check/` (subject to change as Copilot's skill spec evolves)
+- [Claude Code skill](https://github.com/gospelo-dev/github-identity/tree/main/skills/claude) — install under `.claude/skills/gospelo-github-identity-check/`
+- [GitHub Copilot skill](https://github.com/gospelo-dev/github-identity/tree/main/skills/copilot) — install under `.github/copilot/skills/gospelo-github-identity-check/` (subject to change as Copilot's skill spec evolves)
 
 ## License
 
-MIT — free to use, including commercially. You own the copyright of any `config.yml` you write. See [LICENSE.md](https://github.com/gospelo-dev/gospelo-github-identity/blob/main/LICENSE.md) for details.
+MIT — free to use, including commercially. You own the copyright of any `config.yml` you write. See [LICENSE.md](https://github.com/gospelo-dev/github-identity/blob/main/LICENSE.md) for details.

@@ -1,22 +1,4 @@
-# Config Format
-
-## Samples
-
-Three sample configurations are available under [examples/](https://github.com/gospelo-dev/github-identity/tree/main/examples):
-
-- `config.yml` — basic 2-profile setup with comments
-- `config.minimal.yml` — minimal example with a single profile
-- `config.advanced.yml` — 3+ profile setup for freelancers / multi-client work
-
-You can also retrieve the bundled template from the CLI:
-
-```bash
-# Copy bundled template to ~/.config/gospelo-github-identity/config.yml + open in $EDITOR
-gospelo-github-identity init --from-template
-
-# Print bundled template to stdout (for piping)
-gospelo-github-identity init --show-example > my-config.yml
-```
+# Config format
 
 ## Location
 
@@ -24,143 +6,170 @@ gospelo-github-identity init --show-example > my-config.yml
 ~/.config/gospelo-github-identity/config.yml
 ```
 
-The `GOSPELO_GITHUB_IDENTITY_CONFIG` environment variable can point to an alternate path (useful for tests or for switching between multiple profile sets).
+The path is fixed (`$XDG_CONFIG_HOME` is not consulted). To use a different location, set the `GOSPELO_GITHUB_IDENTITY_CONFIG` environment variable (useful for tests or switching between config sets).
 
-## Full Schema
+Three ways to create it:
+
+```bash
+gospelo-github-identity init                  # interactive
+gospelo-github-identity init --from-template  # copy the bundled template, open in $EDITOR
+gospelo-github-identity init --show-example   # print the bundled template to stdout
+```
+
+Three samples live in [examples/](https://github.com/gospelo-dev/github-identity/tree/main/examples): `config.yml` (commented, two profiles), `config.minimal.yml` (single profile), `config.advanced.yml` (multi-client, 3+ profiles).
+
+## Full schema
 
 ```yaml
 version: "1"
 
 profiles:
   <profile-name>:
-    description: <string>
+    description: <string>       # optional
     git:
-      user.name: <string>
-      user.email: <string>
+      user.name: <string>       # required
+      user.email: <string>      # required
     gh:
-      account: <string>
-    ssh:                   # optional; declaring the block enables the SSH-login check
-      login: <string>      # optional; defaults to gh.account
-      host: <string>       # optional; defaults to the host derived from the origin remote
-    paths:
-      - <glob>
+      account: <string>         # required
+      owners:                   # optional; declaring any switches the guard to enforce mode
+        - <owner>
+    ssh:                        # optional; presence enables the SSH login probe
+      login: <string>           # optional; defaults to gh.account
+      host: <string>            # optional; defaults to the host derived from origin
+    paths:                      # optional (may be empty)
       - <glob>
 
-default_profile: <profile-name>   # optional
+default_profile: <profile-name> # optional
 ```
+
+Keys not in the schema are **silently ignored** rather than rejected — a typo will not error. Verify that the config behaves as intended with `list` / `detect` / `check`.
 
 ## Fields
 
 ### version (required)
 
-Schema version. Currently only `"1"` is accepted (string or numeric form is fine).
+Schema version. Only `"1"` is accepted (string or number).
 
 ### profiles (required)
 
-Mapping of profile name to definition. At least one profile is required.
+Mapping of profile name → definition. At least one is required. Profile names should use letters, digits, `_`, and `-` (`init` enforces this shape).
 
-Profile names should consist only of alphanumerics plus `_` / `-` (the `init` command also enforces this).
+#### profiles.\<name\>.description (optional)
 
-#### profiles.\<name\>.description
+Free-text description, shown by `list`.
 
-Free-form description string. May be empty.
+#### profiles.\<name\>.git.user.name / user.email (required)
 
-#### profiles.\<name\>.git.user.name (required)
-
-Value applied to `git config user.name`.
-
-#### profiles.\<name\>.git.user.email (required)
-
-Value applied to `git config user.email`.
+The expected git author. `switch` writes these into `git config`; `check` / `doctor` / `guard` verify them.
 
 #### profiles.\<name\>.gh.account (required)
 
-GitHub login passed to `gh auth switch -u <account>`. You must have authenticated this account beforehand with `gh auth login --hostname github.com`.
+The expected GitHub login. `switch` passes it to `gh auth switch -u <account>`. The account must already be authenticated via `gh auth login --hostname github.com`.
+
+#### profiles.\<name\>.gh.owners (optional)
+
+The GitHub owners (users / orgs) whose repositories this profile's identity writes to. **The linchpin of target-aware enforcement**: declaring any owner switches the [guard](enforcement.md#gh-writes-enforce-mode-owners-declared) to enforce mode — the owner of a write's target (`--repo` / the target repo's remote) is reverse-mapped through these lists and the matching profile's token is injected per invocation. A write targeting an owner no profile declares is refused before execution (fail-closed).
+
+- Matching is case-insensitive, mirroring GitHub login semantics.
+- The same owner may not appear in more than one profile (an ambiguous reverse map is rejected with exit 2).
+- With no `owners` anywhere, the guard stays in the legacy check mode (backward compatible).
+
+```yaml
+gh:
+  account: your-oss-login
+  owners: [your-oss-login, your-oss-org]
+```
 
 #### profiles.\<name\>.ssh (optional)
 
-Declaring an `ssh` block adds an **SSH-login verification** row to `check`. It closes the blind spot where `git config` and `gh` look correct but `git push` authenticates as a *different* account because `ssh-agent` offers another account's key first (e.g. with `IdentitiesOnly no`).
+Declaring an `ssh` block adds an SSH-login row to `check`. It closes a blind spot: even with `git config` and `gh` correct, a stray key in ssh-agent can make `git push` **authenticate as someone else**.
 
-`check` runs `ssh -T` (a read-only, connect-only probe) against the SSH host that this repo's `origin` remote resolves to, and compares the `<login>` in GitHub's `Hi <login>!` banner against the expected login.
+`check` runs `ssh -T` (read-only, connection only) against the SSH host that the repo's `origin` remote resolves to, and compares the `<login>` in GitHub's `Hi <login>!` reply with the expectation.
 
-- `login` (optional) — the expected GitHub login. Defaults to `gh.account` (usually the same GitHub identity, so `ssh: {}` alone is enough).
-- `host` (optional) — force the host to probe. Defaults to the host derived from the `origin` URL (an SSH-alias host like `github.com-work` is preserved verbatim).
+- `login` (optional) — expected GitHub login. Defaults to `gh.account`; plain `ssh: {}` is usually all you need.
+- `host` (optional) — pin the probed host. Defaults to the host derived from origin's URL (alias hosts are used as-is).
 
-Outcome:
+Verdicts:
 
-- Authenticated login matches the expected login → `OK`
-- Mismatch → `NG` (`check` exits 1 and prints the fix: switch to HTTPS, or pin the key via an `~/.ssh/config` host alias)
-- `origin` is not SSH (HTTPS / no remote), or the host is unreachable / no key set up / `ssh` not installed → `--` (skipped, **never a failure**)
+| Situation | Shown as | Effect |
+|---|---|---|
+| Authenticated login matches | `OK` | — |
+| Mismatch | `NG` | `check` exits 1 and prints fix guidance |
+| Origin not SSH / host unreachable / no key / no `ssh` binary | `--` | Skipped; never a failure |
 
-> A profile with no `ssh` block behaves exactly as before — no SSH verification and no network access.
+Profiles without an `ssh` block behave exactly as before — no SSH probe, no network access.
 
-#### profiles.\<name\>.paths
+Note the division of labor: `check`'s ssh probe measures *who you would authenticate as right now*, while `doctor` audits (offline) *whether the key is pinned to the alias*. Use both.
 
-List of glob patterns. Use absolute paths or paths starting with `~`. May be empty.
+#### profiles.\<name\>.paths (optional)
+
+List of glob patterns for the directories this profile governs. Absolute or `~`-prefixed. May be empty (the profile is then only reachable via `default_profile`).
 
 ### default_profile (optional)
 
-Fallback profile name used when no profile's `paths` matches the current directory. Must be one of the names defined in `profiles`. When omitted, an unmatched directory causes `detect` / `check` to exit 1.
+Fallback profile for directories that match no profile's `paths`. Must name an existing profile.
 
-> **Strict rule**: when `default_profile` is omitted, no implicit fallback is applied. Unless you write it explicitly, a non-match is treated as a non-match.
+**When omitted, unmatched stays unmatched** — there is no automatic fallback. `detect` / `check` / `doctor` exit 1, and the `guard` treats the directory as ungoverned and passes commands through.
 
-## Glob Specification
+## Glob semantics
 
 ### Syntax
 
 | Pattern | Meaning |
 |---|---|
-| `*` | Any sequence of characters except `/` |
-| `?` | A single character except `/` |
+| `*` | Any run of characters except `/` |
+| `?` | One character except `/` |
 | `[abc]`, `[a-z]` | Character class |
 | `[!abc]` | Negated character class |
-| `**` | Any number of intermediate directories (zero or more) |
-| `**/` | Any depth of directories |
-| `~` | Expanded to `$HOME` (only at the start of the path) |
+| `**` | Any number of path components (including zero) |
+| `**/` | Any number of directory levels |
+| `~` | Expanded to `$HOME` (leading position only) |
 
 ### Examples
 
 ```yaml
 paths:
   - ~/projects/oss/**             # everything under ~/projects/oss
-  - ~/work/client-a               # exact match only
+  - ~/work/client-a               # this exact directory only
   - ~/work/**/forks/**            # ~/work/.../forks/... recursively
 ```
 
-### Matching Rules
+### Matching rules
 
-1. `cwd` is normalized via `Path.resolve()` (symlinks are resolved as well).
-2. Each profile's `paths` are evaluated in order, and every match becomes a candidate.
-3. **When multiple profiles match, the profile whose pattern has the longest literal prefix wins.** The literal prefix is the length of the pattern from the start up to the first glob metacharacter (`*` / `?` / `[`).
-4. If nothing matches and `default_profile` is set, that profile is returned (`MatchResult.via_default = True`).
+1. The cwd is absolutized with `Path.resolve()` (symlinks resolved).
+2. Every pattern of every profile is evaluated; all matches become candidates.
+3. When several profiles match, the profile containing the pattern with the **longest literal prefix** wins. The literal prefix is the part of the pattern before its first glob metacharacter (`*` / `?` / `[`).
+4. When nothing matches, `default_profile` applies (if set).
 
-### Match Example
+Nested-tree example:
 
 ```yaml
 profiles:
   work:
     paths:
-      - ~/projects/work/**            # literal prefix = "/Users/you/projects/work/"
+      - ~/projects/work/**            # literal prefix = ~/projects/work/
   fork:
     paths:
-      - ~/projects/work/oss-forks/**  # literal prefix = "/Users/you/projects/work/oss-forks/"
+      - ~/projects/work/oss-forks/**  # literal prefix = ~/projects/work/oss-forks/
 ```
 
-When `cwd` is `~/projects/work/oss-forks/some-repo`, both patterns match, but `fork` has the longer literal prefix, so `fork` is selected.
+For cwd `~/projects/work/oss-forks/some-repo` both match, but `fork` has the longer literal prefix and wins. **Deeper (more specific) paths beat shallower ones.**
 
 ## Permissions
 
-- Directory `~/.config/gospelo-github-identity/` is created with mode `0700`
-- File `config.yml` is set to mode `0600` after saving (failure to chmod is not treated as an error)
+- The directory `~/.config/gospelo-github-identity/` is created with mode `0700`
+- `config.yml` is set to `0600` after saving (best-effort; failure is not an error)
 
-## Error Handling
+## Error handling
 
-The CLI exits with code 2 when the config is in any of the following states:
+Commands stop with exit 2 when the config is any of the following (`prompt` prints an empty string instead; the `guard` switches to pass-through):
 
 - File does not exist
-- YAML parse failure
+- YAML parse failure / empty file / root not a mapping
 - `version` is not `"1"`
-- `profiles` is empty or missing
-- A required key inside a profile (`git.user.name` / `git.user.email` / `gh.account`) is missing
-- `ssh` is not a mapping, or `ssh.login` / `ssh.host` is an empty string
-- `default_profile` references a name not present in `profiles`
+- `profiles` missing or empty
+- A profile's required key (`git.user.name` / `git.user.email` / `gh.account`) missing or blank
+- `gh.owners` not a list, an entry blank, or the same owner declared by more than one profile
+- `ssh` not a mapping, or `ssh.login` / `ssh.host` blank
+- `paths` not a list, or an entry blank
+- `default_profile` names a profile that does not exist

@@ -1,24 +1,33 @@
 # CLI リファレンス
 
-すべてのサブコマンドは以下の共通規約に従います:
+全 13 サブコマンドの仕様です。強制レイヤ (guard / commit-msg フック) の動作原理は [enforcement.md](enforcement.md) に詳細があります。
 
-- **stdout**: コマンド本来の出力（テーブル / profile 名 / プロンプト用エスケープ等）
-- **stderr**: 進捗メッセージ・警告・エラー
-- **exit code**:
-  - `0` 成功 / 一致
-  - `1` 期待条件未達（ミスマッチ / 該当 profile なし 等の予期される失敗）
-  - `2` ツールエラー（config 不在、不正な YAML、外部ツール失敗 等）
+## 共通規約
 
-`prompt` のみ例外で、シェル動作を止めないため常に exit 0 を返します。
+- **stdout**: コマンド本来の出力 (テーブル / profile 名 / プロンプト用文字列)
+- **stderr**: 進捗・警告・エラー
+- **終了コード**:
 
-## 共通
+| コード | 意味 |
+|---|---|
+| `0` | 成功 / 一致 |
+| `1` | 期待条件未達 (不一致・該当 profile なし・ブロック等の予期される失敗) |
+| `2` | ツールエラー (config 不在・不正な YAML・外部ツール失敗等) |
+
+例外は `prompt` (シェルを止めないため常に exit 0) と `strip-coauthors` (コミットを止めないため常に exit 0) です。
 
 ```
 gospelo-github-identity --help        # サブコマンド一覧
-gospelo-github-identity --version     # バージョン
+gospelo-github-identity --version     # バージョン表示
 ```
 
-設定ファイルパスは `GOSPELO_GITHUB_IDENTITY_CONFIG` 環境変数で上書きできます（テスト用）。
+### 環境変数
+
+| 変数 | 効果 |
+|---|---|
+| `GOSPELO_GITHUB_IDENTITY_CONFIG` | config ファイルのパスを上書き (既定: `~/.config/gospelo-github-identity/config.yml`) |
+| `GOSPELO_GITHUB_IDENTITY_SKIP` | `1` で guard のゲートを 1 回バイパス (guard 専用) |
+| `GOSPELO_GITHUB_IDENTITY_QUIET` | `1` で guard の情報ステータス行を抑制 (ブロック通知は抑制されない) |
 
 ---
 
@@ -28,24 +37,18 @@ gospelo-github-identity --version     # バージョン
 gospelo-github-identity init [--force] [--from-template] [--show-example]
 ```
 
-`~/.config/gospelo-github-identity/config.yml` を作成します。
+`~/.config/gospelo-github-identity/config.yml` を作成します。オプションなしでは対話的に profile を入力します。既存ファイルがある場合は上書き確認が出ます (`--force` でスキップ)。
 
-オプションなしの場合は対話的に profile を入力します。既存ファイルがある場合は上書き確認のプロンプトが出ます。`--force` で確認をスキップ。
+- `--from-template` — 同梱テンプレートを config パスにコピーし、`$EDITOR` (未設定時は `vi`) で開きます。コピー後にプレースホルダ (`<your-name>` 等) を実値へ置き換えてください。
+- `--show-example` — 同梱テンプレートを stdout に出力します。`> my-config.yml` とリダイレクトして任意の場所に書き出せます。常に exit 0。
 
-非対話モード:
-
-- `--from-template` — 同梱テンプレート (`gospelo_github_identity/templates/config.template.yml`) を `~/.config/gospelo-github-identity/config.yml` にコピーし、`$EDITOR` (未設定時は `vi`) で開きます。対話入力はスキップ。既存ファイルがある場合は `Overwrite? [y/N]` で確認 (`--force` でスキップ)。コピー後にプレースホルダ (`<your-name>` 等) を実値に置き換えてください。
-- `--show-example` — 同梱テンプレートの内容を stdout に出力します。`gospelo-github-identity init --show-example > my-config.yml` のようにリダイレクトでカスタムパスへ書き出せます。常に exit 0。
-
-`--from-template` と `--show-example` は同時指定できません (exit 2)。
-
-サンプル設定は [examples/](https://github.com/gospelo-dev/github-identity/tree/main/examples) にも 3 種 (basic / minimal / advanced) 用意しています。
+`--from-template` と `--show-example` は併用できません (exit 2)。
 
 | 終了コード | 意味 |
 |---|---|
-| 0 | 保存成功、または既存ファイルを残して中断、または `--show-example` 成功 |
-| 1 | 中断（Ctrl-C / EOF / 上書き拒否）、または profile 未入力 |
-| 2 | 保存時の I/O エラー、テンプレート不在、`--from-template` と `--show-example` の併用、`$EDITOR` バイナリ不在 |
+| 0 | 保存成功 / 既存ファイルを残して中断 / `--show-example` 成功 |
+| 1 | 中断 (Ctrl-C / EOF / 上書き拒否) または profile 未入力 |
+| 2 | I/O エラー、テンプレート不在、オプション併用、`$EDITOR` バイナリ不在 |
 
 ---
 
@@ -55,12 +58,12 @@ gospelo-github-identity init [--force] [--from-template] [--show-example]
 gospelo-github-identity list
 ```
 
-登録済み profile をテーブルで表示します。
+登録済み profile をテーブル表示します。
 
 | 終了コード | 意味 |
 |---|---|
-| 0 | 1 つ以上の profile が登録済み |
-| 1 | profile が空（理論上は init が防ぎますが念のため） |
+| 0 | 1 つ以上の profile を表示 |
+| 1 | profile が空 |
 | 2 | config 不在・不正 |
 
 ---
@@ -71,12 +74,12 @@ gospelo-github-identity list
 gospelo-github-identity detect [--cwd PATH]
 ```
 
-現在のディレクトリ（または `--cwd` で指定したディレクトリ）にマッチする profile 名を 1 行で出力します。スクリプトから profile 名だけを取りたい場合に使用。
+現在のディレクトリ (または `--cwd`) を支配する profile 名を 1 行で出力します。スクリプトから profile 名だけ取りたいときに使います。
 
 | 終了コード | 意味 |
 |---|---|
 | 0 | profile を解決できた |
-| 1 | どの profile にもマッチせず、`default_profile` も未設定 |
+| 1 | 未マッチかつ `default_profile` 未設定 |
 | 2 | config 不在・不正 |
 
 ---
@@ -87,29 +90,18 @@ gospelo-github-identity detect [--cwd PATH]
 gospelo-github-identity check [--cwd PATH]
 ```
 
-期待 profile と実状態（`git config user.name` / `user.email` / `gh` CLI のアクティブログイン）を比較してテーブル表示します。profile が `ssh` ブロックを宣言している場合、そのリポジトリの `origin` ホストに対して `ssh -T` が認証される GitHub ログインを照合する `[ssh]` 行が追加されます（[設定ファイル仕様 → ssh](config-format.md#profilesnamessh-任意) 参照）。`[ssh]` 行が `--` の場合はスキップ（origin が SSH でない、またはホスト到達不可）で、実行を失敗させることはありません。
+期待 profile と実状態を照合してテーブル表示します。照合対象:
 
-出力例:
+- `[git]` — local `git config` の `user.name` / `user.email`
+- `[gh CLI]` — アクティブなトークンが実際に属するアカウント (`gh api user` で検証するため、`hosts.yml` のラベルが古くても実体を見ます)
+- `[ssh]` — profile が `ssh` ブロックを宣言している場合のみ。リポジトリの `origin` ホストに `ssh -T` して認証されるログインを照合します。`--` はスキップ (origin が SSH でない / ホスト到達不可) で、失敗にはなりません
 
-```
-=== Identity Check ===
-Working dir: /Users/you/projects/gospelo-dev/review
-Matched profile: oss (via pattern: ~/projects/gospelo-dev/**)
-
-[git]
-  user.name  : your-oss-login  (expected: your-oss-login )  OK
-  user.email : you@example.com (expected: you@example.com)  OK
-[gh CLI]
-  login      : your-work-login (expected: your-oss-login )  NG
-
-WARNING: gh CLI account does not match expected profile.
-Run `gospelo-github-identity switch oss` to fix.
-```
+出力例と ssh 検証の詳細は [quick-start.md](quick-start.md#3-期待と実状態を照合する) と [config-format.md](config-format.md#profilesnamessh-任意) を参照してください。
 
 | 終了コード | 意味 |
 |---|---|
 | 0 | すべて一致 |
-| 1 | 1 つ以上 mismatch、または profile が解決できず |
+| 1 | 1 つ以上不一致、または profile 未解決 |
 | 2 | config 不在・不正、外部ツール失敗 |
 
 ---
@@ -120,39 +112,36 @@ Run `gospelo-github-identity switch oss` to fix.
 gospelo-github-identity doctor [--cwd PATH] [--sweep]
 ```
 
-`check` が「いま自分は正しい人か？」を見るのに対し、`doctor` は「正しい"状態"が保たれる設定になっているか（設定の堅牢さ）」を監査します。設定解決のみで判定し（`ssh -T` のネットワーク接続はしない）、`check` では見抜けない問題を検出します:
+`check` が「いま正しいか」を見るのに対し、`doctor` は「正しさが保たれる構成か」を監査します。設定の解決のみで判定するため高速・オフラインで動作します (`ssh -T` のネットワーク接続はしません)。
 
-- git identity が「未設定」ではなく「設定済みだが**値が間違っている**」（例: `.com`/`.net` タイポ）
-- git identity が global を**継承しているだけ**で正しい（脆い: global が変わると黙って壊れる）
-- remote が素の `git@github.com` のまま（`ssh-agent` の先頭鍵で認証 = 今 OK でも鍵順が変わると壊れる）
-- SSH エイリアスが実際には1鍵に固定されていない（`IdentitiesOnly no` / 鍵ファイル欠落）
-- 期待する `gh` アカウントがそもそも未ログイン
+**[machine] マシン単位の監査:**
 
-各項目は `OK` / `INFO` / `WARN` / `FAIL` で表示。`--sweep` を付けると、マッチした profile の `paths` 配下の**全 git repo を一括監査**します（「18 repo が鍵順ひとつで別人 push になる」といった俯瞰把握）。
+| 判定 | 条件 |
+|---|---|
+| OK | global git identity が未設定 (identity は各リポジトリに委ねられている) |
+| INFO | global git identity が設定済み (local 未設定のリポジトリはこれを継承する) |
+| OK / WARN | 期待する gh アカウントがログイン済みか (未ログインだと switch も guard のトークン注入も作動不能) |
+| OK / WARN | 環境に `GH_TOKEN` / `GITHUB_TOKEN` が常駐していないか (常駐していると guard の注入を上書きし、シム迂回経路を認証してしまう) |
+| OK / INFO / WARN | guard の動作モード: この profile が `gh.owners` を宣言済み (OK) / どの profile も未宣言で check 型 (INFO) / 他 profile だけ宣言済みでこの profile が置き去り (WARN) |
 
-出力例:
+**[repo] リポジトリ単位の監査:**
 
-```
-=== Identity Doctor ===
-Working dir: /Users/you/projects/gospelo-dev/review
-Matched profile: gospelo (via pattern: ~/projects/gospelo-dev/**)
+| 判定 | 条件 |
+|---|---|
+| FAIL | git identity が未設定 (コミット不能) / 実効値が期待と不一致 |
+| WARN | 実効値は正しいが local 固定でなく global 継承 (global 変更で静かに壊れる) |
+| OK | git identity が local に固定済み |
+| WARN | `origin` remote がない / SSH でない / 素の `github.com` (ssh-agent の鍵順に依存) |
+| WARN | SSH エイリアスが `IdentityFile` を固定していない / `IdentitiesOnly` が no |
+| FAIL | エイリアスの鍵ファイルが存在しない |
+| OK | エイリアスが 1 鍵に固定済み (`IdentitiesOnly yes`) |
 
-[machine]
-  [OK  ] global git identity is unset (identity is left to each repo)
-  [OK  ] gh account 'gorosun' is logged in
-
-[repo] review  (/Users/you/projects/gospelo-dev/review)
-  [OK  ] git identity pinned locally: gorosun / you@example.com
-  [OK  ] origin uses SSH alias 'gospelo-dev' (git@gospelo-dev:gospelo-dev/review.git)
-  [OK  ] alias 'gospelo-dev' pins ~/.ssh/id_gospelo-dev (IdentitiesOnly yes)
-
-OK: setup is healthy for profile 'gospelo'.
-```
+`--sweep` を付けると、マッチした profile の `paths` 配下を走査して**その profile が支配する全 git リポジトリ**を一括監査します (`node_modules` / `.venv` / 隠しディレクトリ等はスキップ。別 profile が支配するリポジトリは対象外)。
 
 | 終了コード | 意味 |
 |---|---|
-| 0 | 監査項目がすべて OK |
-| 1 | WARN/FAIL が 1 件以上、または profile が解決できず |
+| 0 | すべて OK (INFO は OK 扱い) |
+| 1 | WARN / FAIL が 1 件以上、または profile 未解決 |
 | 2 | config 不在・不正、外部ツール失敗 |
 
 ---
@@ -163,19 +152,18 @@ OK: setup is healthy for profile 'gospelo'.
 gospelo-github-identity switch <profile> [--global] [--dry-run] [--cwd PATH]
 ```
 
-指定 profile のために `git config user.name` / `user.email` を設定し、`gh auth switch -u <account>` を実行します。
+指定 profile の identity を一括適用します:
 
-- デフォルトは `git config --local`（カレントリポジトリのみ）
-- `--global` でユーザー全体
-- `--dry-run` は副作用なしで予定だけ表示
+1. `git config user.name` / `user.email` を設定 (既定は `--local`、`--global` でユーザー全体)
+2. `gh auth switch -u <account>` を実行し、切替後にトークンレベルで実体を検証 (keyring の credential が古い場合は NG を報告)
+
+`--dry-run` は副作用なしで予定だけ表示します。`--local` (既定) で cwd が git work tree の外にある場合は exit 2 で停止します。
 
 | 終了コード | 意味 |
 |---|---|
 | 0 | git config と gh switch の両方が成功 |
-| 1 | 部分成功（片方だけ失敗） |
+| 1 | 部分成功 (片方だけ失敗) |
 | 2 | profile 不在、両方失敗、外部ツール不在 |
-
-`--local`（既定）で `cwd` が git work tree の外にある場合は exit 2 で停止します。`--global` を使うか、リポジトリに移動してください。
 
 ---
 
@@ -185,129 +173,56 @@ gospelo-github-identity switch <profile> [--global] [--dry-run] [--cwd PATH]
 gospelo-github-identity prompt [--format {plain,color,ps1}] [--show-mismatch] [--cwd PATH]
 ```
 
-シェルプロンプト統合用 helper。マッチした profile 名を `[name]` の形式で出力します。マッチしない・config 未作成のときは空文字列を返します。常に exit 0。
+シェルプロンプト用 helper。マッチした profile 名を `[name]` 形式で出力します。未マッチ・config 不在のときは黙って空文字列を返します。**常に exit 0** です。
 
-`--format`:
+- `--format plain` (既定) — `[oss]`
+- `--format color` — ANSI エスケープ付き (通常は黄、不一致は赤)
+- `--format ps1` — bash の `PS1` 用に非印字マーカー `\[ \]` で囲んだ color 出力
+- `--show-mismatch` — git/gh 実状態が profile と不一致のとき `[oss !]` のように `!` を付与
 
-- `plain` (既定) — `[oss]`
-- `color` — ANSI エスケープ付き（`\033[33m[oss]\033[0m`）
-- `ps1` — bash の `PS1` 用に readline 非印字マーカー `\[ \]` で囲む
-
-`--show-mismatch` を付けると、git/gh 状態が profile と不一致の場合に `[oss !]` のように `!` を付与し、`color` / `ps1` では赤色で表示します。
-
-bash の例:
-
-```bash
-PS1='$(gospelo-github-identity prompt --format=ps1 --show-mismatch) \w \$ '
-```
-
-zsh の例（`PROMPT` で使う場合は `setopt PROMPT_SUBST` が必要）:
-
-```zsh
-setopt PROMPT_SUBST
-PROMPT='%F{yellow}$(gospelo-github-identity prompt --format=plain --show-mismatch)%f %~ %# '
-```
+組み込みレシピは [shell-integration.md](shell-integration.md) を参照してください。
 
 ---
 
-## enforcement: guard（gh/git の PATH シム）
-
-guard は `PATH` 上の `gh`（任意で `git`）を小さなシム実行ファイルで**シャドウ**します。各呼び出しは `gospelo-github-identity guard` を経由し、**読み取り専用**コマンドはそのまま通し、**書き込み／外向き**コマンド（`git push`、`gh release/pr/repo/... create`、変更系の `gh api` など）については先にカレントディレクトリの identity チェックを行い、アクティブな git/gh identity がそのディレクトリを支配する profile と一致しない場合は書き込みを**ブロック**します（非ゼロ終了。本物のバイナリは実行されません）。
-
-設計上の制約:
-
-- **決定論的** — 純粋なパターンロジックのみ。LLM は使わない。
-- **ローカル完結** — `check` が行う `gh api user` 以上の通信は発生しない。
-- **enforcement の外では fail-open** — マッチした profile 下で identity 不一致の書き込みはブロックするが、それ以外（config 不在、config 読み取り不可、どの profile にもマッチしないディレクトリ、`GOSPELO_GITHUB_IDENTITY_SKIP` 設定時）は本物のコマンドをそのまま実行する。無関係な作業を壊さない。
-
-制限: PATH シムは**名前ベース**の呼び出ししか捕捉できません。絶対パス指定（`/usr/bin/git push`）はバイパスされます。シムの役割は自動化／エージェント実行中の**うっかり**誤 identity 書き込みを止めることであり、敵対的プロセスへの防御ではありません。その用途には OS サンドボックスを併用してください。
-
-### install-guard
+## guard / install-guard / uninstall-guard
 
 ```
 gospelo-github-identity install-guard [--dir DIR] [--tools gh,git]
-```
-
-`DIR`（既定 `~/.gospelo-github-identity/bin`）にシム実行ファイルを書き出し、シェル rc に追記すべき行を表示します。
-
-- `--tools`（既定 `gh`）— シャドウ対象をカンマ区切りで指定。`git` をシャドウすると毎回の `git` 呼び出しに Python 起動が乗り影響範囲も大きいため、`git push` をガードしたい場合のみ `--tools gh,git` で明示的に有効化します（コミットメッセージの衛生は `install-commit-hook` が別途担当）。
-- インストール前に、解決された `gospelo-github-identity` が実際に `guard` サブコマンドを持つか検証し、壊れたシム（古いビルドが `PATH` 先頭にある場合など）のインストールを拒否します。
-
-シムディレクトリを `PATH` の**先頭**に置いて有効化します:
-
-```bash
-export PATH="$HOME/.gospelo-github-identity/bin:$PATH"   # ~/.zshrc や ~/.bashrc に追記
-command -v gh   # シムのパスが表示されればOK
-```
-
-| 終了コード | 意味 |
-|---|---|
-| 0 | 1つ以上のシムをインストール |
-| 1 | シム未インストール（`PATH` にツールが無い、または解決コマンドが `guard` 非対応） |
-
-### guard
-
-```
+gospelo-github-identity uninstall-guard [--dir DIR] [--tools gh,git]
 gospelo-github-identity guard --tool {gh,git} --real <path> -- <args...>
 ```
 
-シムが呼び出すランタイムゲート。通常は手動で実行しません。**書き込み**呼び出しでは **stderr** に1行のステータスを出力します（読み取り専用呼び出しは無音）:
+`gh` (opt-in で `git`) を PATH シムでシャドウし、書き込みの**操作対象** (`--repo` / `git -C` / 対象 repo の remote) から identity を解決して強制します。profile が `gh.owners` を宣言していれば対象 owner から逆引きした profile のトークンを呼び出しごとに注入し (enforce 型)、未宣言 owner への書き込みは実行前に拒否します (fail-closed)。owners 未宣言の設定では従来どおり cwd の profile と照合する check 型で動きます。`guard` はシムが呼び出すランタイムゲートで、通常は直接実行しません。
 
-| 状況 | stderr | 結果 |
-|---|---|---|
-| identity 一致 | `identity OK for profile '<name>'; passing through.` | 本物のコマンドを実行 |
-| identity 不一致 | `BLOCKED ... fix: gospelo-github-identity switch <name>` | **ブロック**、exit 1 |
-| 未ガバナンスのディレクトリ | `directory not governed by any profile; passing through.` | 本物のコマンドを実行 |
-| config 不在／読み取り不可 | `no usable config; passing through ...` | 本物のコマンドを実行 |
+- `install-guard --dir` — シム設置先 (既定: `~/.gospelo-github-identity/bin`)
+- `install-guard --tools` — シャドウ対象 (既定: `gh` のみ。`git push` もガードするには `--tools gh,git`)
 
-環境変数:
+インストール後、シムディレクトリを **PATH の先頭**に追加して有効化します。動作原理・書き込み分類・fail-open/fail-closed の境界・環境変数は [enforcement.md](enforcement.md) を参照してください。
 
-- `GOSPELO_GITHUB_IDENTITY_SKIP=1` — 1回だけゲートをバイパス: `GOSPELO_GITHUB_IDENTITY_SKIP=1 gh release create ...`。
-- `GOSPELO_GITHUB_IDENTITY_QUIET=1` — 上記の情報ステータス行を抑制。**ブロックはこの設定に関係なく必ず表示**されます。
-
-### uninstall-guard
-
-```
-gospelo-github-identity uninstall-guard [--dir DIR] [--tools gh,git]
-```
-
-シムファイルを削除します。シェル rc に追記した `export PATH=...` の行も忘れずに削除してください。
+| 終了コード (install-guard) | 意味 |
+|---|---|
+| 0 | 1 つ以上のシムをインストール |
+| 1 | シム未インストール (対象ツールが PATH にない / 解決されたコマンドが `guard` 非対応) |
 
 ---
 
-## enforcement: commit-msg フック（Co-Authored-By 除去）
-
-グローバルな `commit-msg` フックが、コミットメッセージから `Co-authored-by:` トレーラ行をすべて除去します（コミットを実行する人間が責任を負う著者であるため）。PATH シムと異なり、`git` が絶対パスや IDE から呼ばれてもフックは発火します（git 自身が実行するため）。また commit 時のみ動くので毎回の呼び出しレイテンシはありません。
-
-### install-commit-hook
+## install-commit-hook / uninstall-commit-hook / strip-coauthors
 
 ```
 gospelo-github-identity install-commit-hook [--dir DIR] [--force]
-```
-
-`DIR`（既定 `~/.gospelo-github-identity/git-hooks`）にグローバル `core.hooksPath` ディスパッチャをインストールします。`commit-msg` で `Co-Authored-By` を除去した後、**各リポジトリ独自の `.git/hooks/<name>` にチェーン**するため、既存フック（husky, pre-commit など）も動き続けます。
-
-- グローバル `core.hooksPath` が別の値に既設の場合、`--force` なしでは拒否します。
-- **独自の** `core.hooksPath` を設定するリポジトリ（husky など）はグローバル設定を上書きします。その場合はリポジトリ単位でインストールしてください。
-
-| 終了コード | 意味 |
-|---|---|
-| 0 | インストール完了 |
-| 1 | 別のグローバル `core.hooksPath` が既設（`--force` で再実行） |
-| 2 | `core.hooksPath` の設定に失敗 |
-
-### uninstall-commit-hook
-
-```
 gospelo-github-identity uninstall-commit-hook [--dir DIR]
-```
-
-グローバル `core.hooksPath`（自分のディスパッチャを指している場合のみ）を解除し、ディスパッチャ関連ファイルを削除します。
-
-### strip-coauthors
-
-```
 gospelo-github-identity strip-coauthors <commit-msg-file>
 ```
 
-フックが呼び出すワーカー。メッセージファイルをその場で書き換え、`Co-authored-by:` 行を除去します。通常は直接呼びません。常に exit 0（自身の I/O エラーでコミットをブロックしない）。
+グローバル `commit-msg` フックとして、全コミットメッセージから `Co-authored-by:` トレーラを除去します。`strip-coauthors` はフックが呼ぶワーカーで、通常は直接実行しません (常に exit 0 — 自身の I/O エラーでコミットを止めません)。
+
+- `install-commit-hook --dir` — フック設置先 (既定: `~/.gospelo-github-identity/git-hooks`)
+- `install-commit-hook --force` — 別値の global `core.hooksPath` が既設でも上書き
+
+ディスパッチャは処理後に各リポジトリ自身の `.git/hooks/<name>` へ**チェーン**するため、husky / pre-commit 等の既存フックは動き続けます。詳細は [enforcement.md](enforcement.md#commit-msg-フック-co-authored-by-除去) を参照してください。
+
+| 終了コード (install-commit-hook) | 意味 |
+|---|---|
+| 0 | インストール完了 |
+| 1 | 別の global `core.hooksPath` が既設 (`--force` で再実行) |
+| 2 | `core.hooksPath` の設定に失敗 |

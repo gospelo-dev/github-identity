@@ -109,7 +109,7 @@ Python 3.11+ が必要です。`git` および [`gh` CLI](https://cli.github.com
 gospelo-github-identity init
 
 # 2. 設定と fail-closed 状態を監査
-#    (素の remote、鍵固定のないエイリアス、環境に常駐する GH_TOKEN、残存グローバル auth ...)
+#    (素の remote、鍵固定のないエイリアス、環境に常駐する GH_TOKEN ...)
 gospelo-github-identity doctor --sweep
 
 # 3. guard をインストール (gh / git を PATH シムでシャドウ)
@@ -131,7 +131,7 @@ gh --repo <owner>/<repo> repo view   # owner に対応する profile のトー�
 | `list` | 登録済み profile をテーブル表示 |
 | `detect` | 現在ディレクトリで適用される profile 名を出力 |
 | `check` | 期待 vs 実状態 (`git config` / `gh` CLI) を比較 |
-| `doctor` | 設定の*健全性*を監査: identity のスコープ/値、remote + SSH エイリアスの鍵固定、**ambient credential (常駐 `GH_TOKEN` / 残存グローバル auth)**。`--sweep` で profile ツリー全体 |
+| `doctor` | 設定の*健全性*を監査: identity のスコープ/値、remote + SSH エイリアスの鍵固定、**ambient credential (常駐 `GH_TOKEN` / `GITHUB_TOKEN`)**。`--sweep` で profile ツリー全体 |
 | `switch <profile>` | 指定 profile の git config を手動適用する一発コマンド |
 | `prompt` | シェルプロンプト統合用 helper (`--format=ps1` / `plain` / `color`) |
 | `install-guard` / `uninstall-guard` | `gh` / `git` を PATH シムでシャドウし、対象 repo 基準の identity を強制 |

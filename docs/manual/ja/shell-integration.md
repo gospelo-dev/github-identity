@@ -1,8 +1,10 @@
 # シェル統合ガイド
 
-`gospelo-github-identity` をシェルや既存の開発フローに組み込むレシピ集です。
+`gospelo-github-identity` を対話シェルの日常フローに組み込むレシピ集です。エージェント向けの強制レイヤは [enforcement.md](enforcement.md) / [agents.md](agents.md) を参照してください。
 
-## PS1 / プロンプト表示
+## プロンプトに profile を常時表示する
+
+`prompt` サブコマンドは、マッチした profile 名を `[name]` 形式で出力します。`--show-mismatch` を付けると、実状態が profile と不一致のときに `[oss !]` と警告マーカーが付きます。未マッチ・config 不在では黙って空文字列になるため、プロンプトが崩れることはありません。
 
 ### bash
 
@@ -10,11 +12,11 @@
 PS1='$(gospelo-github-identity prompt --format=ps1 --show-mismatch) \w \$ '
 ```
 
-`--show-mismatch` を付けると、git/gh の実状態が profile と一致していない場合にプロンプトが赤く `[oss !]` のように表示されます。
+`--format=ps1` は ANSI 色を readline の非印字マーカー `\[ \]` で囲むため、行折り返しが乱れません。
 
 ### zsh
 
-`PROMPT_SUBST` を有効にし、`%F`/`%f` で色を付ける方が綺麗:
+`PROMPT_SUBST` を有効にし、色は zsh の `%F`/`%f` で付ける方が扱いやすいです:
 
 ```zsh
 setopt PROMPT_SUBST
@@ -22,9 +24,7 @@ setopt PROMPT_SUBST
 _identity_prompt() {
   local label
   label=$(gospelo-github-identity prompt --format=plain --show-mismatch)
-  if [[ -z "$label" ]]; then
-    return
-  fi
+  [[ -z "$label" ]] && return
   if [[ "$label" == *"!"* ]]; then
     print -n "%F{red}${label}%f"
   else
@@ -52,22 +52,24 @@ function fish_right_prompt
 end
 ```
 
-> **注意**: `gospelo-github-identity prompt` は config 不在時にも黙って空文字列を返すため、シェルの動作を止めません。例外を流したい場合は `check` を別途呼び出してください。
+> `prompt` は常に exit 0 で、エラーも表示しません。エラーを見たいときは `check` を直接実行してください。
 
 ## direnv 統合
 
-リポジトリに入った瞬間に `check` を走らせて警告したい場合、`.envrc` で:
+リポジトリに入った瞬間に照合結果を表示したい場合、`.envrc` に:
 
 ```bash
 # .envrc
 gospelo-github-identity check >&2 || echo "WARNING: identity mismatch (see above)" >&2
 ```
 
-`direnv allow` を実行しておけば、`cd` するたびに自動で表示されます。
+`direnv allow` しておけば `cd` のたびに自動表示されます。
 
-## pre-commit hook 統合
+> **注意**: direnv は対話シェルのフックで動くため、AI エージェントの非対話実行 (`bash -c ...`) では発火しません。エージェント対策としては direnv ではなく [guard](enforcement.md) を使ってください。
 
-コミット前に強制チェックする最も簡易な方法は `.git/hooks/pre-commit` に直接書く:
+## pre-commit 統合
+
+コミット前に照合を強制する最も簡単な方法は `.git/hooks/pre-commit` に直接書くことです:
 
 ```bash
 #!/usr/bin/env bash
@@ -81,7 +83,7 @@ if [[ $status -ne 0 ]]; then
 fi
 ```
 
-`pre-commit` フレームワークを使っているなら `repo: local` で:
+[pre-commit](https://pre-commit.com/) フレームワークを使っている場合は `repo: local` で:
 
 ```yaml
 # .pre-commit-config.yaml
@@ -96,26 +98,8 @@ repos:
         stages: [commit]
 ```
 
-## CI で使わない
+> `Co-Authored-By` トレーラの除去は pre-commit ではなく専用の [commit-msg フック](enforcement.md#commit-msg-フック-co-authored-by-除去) が担当します (どの経路の commit でも最終メッセージに効くため)。
 
-gospelo-github-identity は **ローカル開発時の取り違え防止** が目的です。CI 環境では git config / gh CLI のアカウントは固定の bot アカウントが期待されるため、`check` を走らせる意味は通常ありません。CI スクリプトには組み込まないでください。
+## CI では使わない
 
-## トラブルシューティング
-
-### `gh auth switch` が失敗する
-
-事前に対象アカウントで `gh auth login --hostname github.com` を実行している必要があります。`gh auth status` で現在認証済みのアカウント一覧を確認してください。
-
-### `git config --local` が失敗する
-
-`switch` のデフォルトは `--local` なので、git work tree の外（普通のディレクトリ）で実行すると exit 2 になります。`--global` を付けるか、リポジトリに `cd` してから再実行してください。
-
-### path glob がマッチしない
-
-`detect` で実際にどの profile が選ばれるかを確認できます:
-
-```bash
-gospelo-github-identity detect --cwd ~/projects/oss/foo
-```
-
-config の `paths` が `~` 始まりであること、`**` を入れているか（再帰マッチが必要な場合）を確認してください。
+gospelo-github-identity は**ローカル開発マシンでの取り違え防止**が目的です。CI 環境は固定の bot アカウントで動くため、ディレクトリ連動の照合を走らせる意味は通常ありません。CI スクリプトには組み込まないでください。

@@ -1,8 +1,10 @@
-# Shell Integration Guide
+# Shell integration guide
 
-A collection of recipes for wiring `gospelo-github-identity` into your shell and existing development workflow.
+Recipes for wiring `gospelo-github-identity` into your interactive shell. For the agent-facing enforcement layer, see [enforcement.md](enforcement.md) / [agents.md](agents.md).
 
-## PS1 / Prompt Display
+## Keep the profile visible in your prompt
+
+The `prompt` subcommand prints the matched profile name as `[name]`. With `--show-mismatch` it appends a warning marker — `[oss !]` — whenever the live state does not match the profile. On no match or missing config it silently prints nothing, so your prompt never breaks.
 
 ### bash
 
@@ -10,11 +12,11 @@ A collection of recipes for wiring `gospelo-github-identity` into your shell and
 PS1='$(gospelo-github-identity prompt --format=ps1 --show-mismatch) \w \$ '
 ```
 
-With `--show-mismatch`, the prompt turns red and is rendered like `[oss !]` whenever the actual git/gh state does not match the expected profile.
+`--format=ps1` wraps the ANSI colors in readline non-printing markers `\[ \]`, so line wrapping stays correct.
 
 ### zsh
 
-Enable `PROMPT_SUBST` and rely on `%F`/`%f` for cleaner colors:
+Enable `PROMPT_SUBST` and color with zsh's own `%F`/`%f`:
 
 ```zsh
 setopt PROMPT_SUBST
@@ -22,9 +24,7 @@ setopt PROMPT_SUBST
 _identity_prompt() {
   local label
   label=$(gospelo-github-identity prompt --format=plain --show-mismatch)
-  if [[ -z "$label" ]]; then
-    return
-  fi
+  [[ -z "$label" ]] && return
   if [[ "$label" == *"!"* ]]; then
     print -n "%F{red}${label}%f"
   else
@@ -52,22 +52,24 @@ function fish_right_prompt
 end
 ```
 
-> **Note**: `gospelo-github-identity prompt` silently returns an empty string even when the config is missing, so it never breaks your shell. If you want errors to surface, call `check` separately.
+> `prompt` always exits 0 and never prints errors. When you want to see the error, run `check` directly.
 
-## direnv Integration
+## direnv
 
-To run `check` and warn the moment you enter a repository, add this to `.envrc`:
+To see the comparison the moment you enter a repository, in `.envrc`:
 
 ```bash
 # .envrc
 gospelo-github-identity check >&2 || echo "WARNING: identity mismatch (see above)" >&2
 ```
 
-After `direnv allow`, the warning appears automatically every time you `cd` into the directory.
+After `direnv allow`, it prints automatically on every `cd`.
 
-## pre-commit Hook Integration
+> **Note**: direnv runs from an interactive-shell hook, so it never fires under an AI agent's non-interactive `bash -c ...`. For agents, use the [guard](enforcement.md), not direnv.
 
-The simplest way to enforce a check before committing is to write directly to `.git/hooks/pre-commit`:
+## pre-commit
+
+The simplest way to force a check before committing is `.git/hooks/pre-commit`:
 
 ```bash
 #!/usr/bin/env bash
@@ -81,7 +83,7 @@ if [[ $status -ne 0 ]]; then
 fi
 ```
 
-If you use the `pre-commit` framework, configure it as a `repo: local` hook:
+With the [pre-commit](https://pre-commit.com/) framework, use `repo: local`:
 
 ```yaml
 # .pre-commit-config.yaml
@@ -96,26 +98,8 @@ repos:
         stages: [commit]
 ```
 
-## Do Not Use in CI
+> Stripping `Co-Authored-By` trailers is the job of the dedicated [commit-msg hook](enforcement.md#the-commit-msg-hook-stripping-co-authored-by), not pre-commit — it sees the final message on every commit path.
 
-gospelo-github-identity is meant for **preventing local mix-ups during development**. CI environments are expected to use a fixed bot account for git config / gh CLI, so running `check` there is rarely meaningful. Do not wire it into CI pipelines.
+## Do not use in CI
 
-## Troubleshooting
-
-### `gh auth switch` fails
-
-You must have authenticated the target account beforehand with `gh auth login --hostname github.com`. Run `gh auth status` to see the list of accounts that are currently authenticated.
-
-### `git config --local` fails
-
-`switch` defaults to `--local`, so running it outside a git work tree (in a regular directory) returns exit 2. Either pass `--global` or `cd` into a repository before retrying.
-
-### A path glob does not match
-
-Use `detect` to confirm which profile is actually selected:
-
-```bash
-gospelo-github-identity detect --cwd ~/projects/oss/foo
-```
-
-Make sure your `paths` entries start with `~` and include `**` whenever recursive matching is required.
+gospelo-github-identity exists to prevent mix-ups **on local development machines**. CI runs under a fixed bot account, so a directory-derived comparison is normally meaningless there. Keep it out of CI scripts.

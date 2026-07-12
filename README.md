@@ -109,7 +109,7 @@ A human runs the setup once; from then on the machine stays in a state agents ca
 gospelo-github-identity init
 
 # 2. Audit the setup and the fail-closed state
-#    (bare remotes, aliases with no pinned key, GH_TOKEN lingering in the env, leftover global auth ...)
+#    (bare remotes, aliases with no pinned key, GH_TOKEN lingering in the env ...)
 gospelo-github-identity doctor --sweep
 
 # 3. Install the guard (shadow gh / git with PATH shims)
@@ -131,7 +131,7 @@ No agent-side configuration is needed (the PATH shim intercepts every `gh` / `gi
 | `list` | List registered profiles as a table |
 | `detect` | Print the profile that applies to the current directory |
 | `check` | Compare expected vs. live state (`git config` / `gh` CLI) |
-| `doctor` | Audit the *health* of the setup: identity scope/values, remote + SSH alias key pinning, **ambient credentials (lingering `GH_TOKEN` / leftover global auth)**. `--sweep` audits a profile's whole tree |
+| `doctor` | Audit the *health* of the setup: identity scope/values, remote + SSH alias key pinning, **ambient credentials (lingering `GH_TOKEN` / `GITHUB_TOKEN`)**. `--sweep` audits a profile's whole tree |
 | `switch <profile>` | One-shot manual application of a profile's git config |
 | `prompt` | Shell-prompt integration helper (`--format=ps1` / `plain` / `color`) |
 | `install-guard` / `uninstall-guard` | Shadow `gh` / `git` with PATH shims that enforce target-repo-based identity |

@@ -11,6 +11,8 @@ profiles:
       user.email: "<your-email@example.com>"
     gh:
       account: "<your-github-login>"
+      # (推奨) guard の target-aware 強制を有効にする owner 宣言
+      # owners: ["<your-github-login>"]
     paths:
       - ~/projects/**
 

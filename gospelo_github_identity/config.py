@@ -40,6 +40,11 @@ class Profile:
     git_user_name: str
     git_user_email: str
     gh_account: str
+    # GitHub owners (users / orgs) whose repositories this profile's identity
+    # writes to. The guard reverse-maps an operation's target owner to a
+    # profile through this list (target-aware enforcement). Matching is
+    # case-insensitive, mirroring GitHub login semantics.
+    gh_owners: list[str] = field(default_factory=list)
     paths: list[str] = field(default_factory=list)
     # Optional SSH-login verification. ``ssh_check`` is True when the profile
     # declares an ``ssh`` block (opt-in). ``ssh_login`` is the raw expected
@@ -73,6 +78,27 @@ class Config:
                 f"Unknown profile: {name!r}. Available: {available}"
             )
         return self.profiles[name]
+
+    def owners_declared(self) -> bool:
+        """True when at least one profile declares ``gh.owners``.
+
+        This is the opt-in switch for target-aware enforcement: with no owners
+        anywhere, the guard stays in legacy cwd-based check mode.
+        """
+        return any(p.gh_owners for p in self.profiles.values())
+
+    def profile_for_owner(self, owner: str) -> Profile | None:
+        """Reverse-map a GitHub owner (user/org) to the profile declaring it.
+
+        Case-insensitive. Returns ``None`` when no profile declares the owner
+        (parse-time validation guarantees an owner appears in at most one
+        profile).
+        """
+        needle = owner.casefold()
+        for profile in self.profiles.values():
+            if any(o.casefold() == needle for o in profile.gh_owners):
+                return profile
+        return None
 
 
 def resolve_config_path() -> Path:
@@ -139,6 +165,20 @@ def _parse_config(raw: dict[str, Any], source_path: Path) -> Config:
     for name, body in profiles_raw.items():
         profiles[name] = _parse_profile(name, body, source_path)
 
+    # An owner must map to exactly one profile -- an ambiguous reverse map
+    # would make the guard's target-aware enforcement nondeterministic.
+    owner_seen: dict[str, str] = {}
+    for name, profile in profiles.items():
+        for owner in profile.gh_owners:
+            key = owner.casefold()
+            if key in owner_seen:
+                raise ConfigError(
+                    f"{source_path}: gh owner {owner!r} is declared by both "
+                    f"profile {owner_seen[key]!r} and {name!r}; an owner may "
+                    f"belong to only one profile"
+                )
+            owner_seen[key] = name
+
     default_profile = raw.get("default_profile")
     if default_profile is not None:
         if not isinstance(default_profile, str):
@@ -195,6 +235,20 @@ def _parse_profile(name: str, body: Any, source_path: Path) -> Profile:
             f"{source_path}: profile {name!r} missing required 'gh.account'"
         )
 
+    owners_raw = gh_block.get("owners", [])
+    if not isinstance(owners_raw, list):
+        raise ConfigError(
+            f"{source_path}: profile {name!r} 'gh.owners' must be a list"
+        )
+    gh_owners: list[str] = []
+    for entry in owners_raw:
+        if not isinstance(entry, str) or not entry.strip():
+            raise ConfigError(
+                f"{source_path}: profile {name!r} 'gh.owners' entries must be "
+                f"non-empty strings"
+            )
+        gh_owners.append(entry.strip())
+
     ssh_check, ssh_login, ssh_host = _parse_ssh(name, body.get("ssh"), source_path)
 
     paths_raw = body.get("paths", [])
@@ -223,6 +277,7 @@ def _parse_profile(name: str, body: Any, source_path: Path) -> Profile:
         git_user_name=user_name.strip(),
         git_user_email=user_email.strip(),
         gh_account=gh_account.strip(),
+        gh_owners=gh_owners,
         paths=paths,
         ssh_check=ssh_check,
         ssh_login=ssh_login,
@@ -292,6 +347,8 @@ def save_config(config: Config, path: Path | None = None) -> Path:
                 "account": profile.gh_account,
             },
         }
+        if profile.gh_owners:
+            entry["gh"]["owners"] = list(profile.gh_owners)
         if profile.ssh_check:
             ssh_out: dict[str, str] = {}
             if profile.ssh_login is not None:

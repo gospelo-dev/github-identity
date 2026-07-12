@@ -2,6 +2,8 @@
 #
 # 個人 OSS / 業務 / クライアント案件など、3 つ以上の profile を使い分ける例。
 # 複数のクライアントを抱えるフリーランス想定。
+# 各 profile の gh.owners が対象 owner → profile の逆引きを担い、
+# guard がクライアント間のアカウント取り違えを実行前に止める。
 
 version: "1"
 
@@ -14,6 +16,7 @@ profiles:
       user.email: "you@personal.example.com"
     gh:
       account: "yourname"
+      owners: ["yourname", "your-oss-org"]
     paths:
       - ~/projects/personal/**
       - ~/projects/oss/**
@@ -27,6 +30,7 @@ profiles:
       user.email: "you@company-x.example.com"
     gh:
       account: "yourname-companyx"
+      owners: ["company-x-org"]
     paths:
       - ~/projects/company-x/**
 
@@ -38,6 +42,7 @@ profiles:
       user.email: "you@client-a.example.com"
     gh:
       account: "yourname-client-a"
+      owners: ["client-a-org"]
     paths:
       - ~/projects/clients/client-a/**
 
@@ -49,6 +54,7 @@ profiles:
       user.email: "you@client-b.example.com"
     gh:
       account: "yourname-client-b"
+      owners: ["client-b-org"]
     paths:
       - ~/projects/clients/client-b/**
 

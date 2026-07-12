@@ -139,6 +139,43 @@ def git_remote_url(remote: str = "origin", cwd: Path | None = None) -> str | Non
     return None
 
 
+def owner_from_remote_url(url: str) -> str | None:
+    """Extract the GitHub owner (user/org) from a git remote URL.
+
+    Handles the three shapes git remotes take in practice; the host part is
+    deliberately ignored so SSH-alias hosts (``git@gospelo-dev:owner/repo``)
+    resolve the same way as ``git@github.com:owner/repo``:
+
+      * scp-like  ``[user@]host:owner/repo[.git]``
+      * ssh://    ``ssh://[user@]host[:port]/owner/repo[.git]``
+      * http(s):// ``https://host/owner/repo[.git]``
+
+    Returns ``None`` for local paths / anything without an owner segment.
+    """
+    url = url.strip()
+    if not url:
+        return None
+
+    path: str | None = None
+    if "://" in url:
+        scheme, rest = url.split("://", 1)
+        if scheme not in ("ssh", "git+ssh", "http", "https", "git"):
+            return None
+        path = rest.split("/", 1)[1] if "/" in rest else None
+    elif ":" in url and "/" in url.split(":", 1)[1]:
+        # scp-like; require the colon before any slash so plain local paths
+        # (``/data/repo.git``, ``../x``) are not mistaken for it.
+        head, tail = url.split(":", 1)
+        if "/" in head:
+            return None
+        path = tail
+
+    if not path:
+        return None
+    owner = path.strip("/").split("/", 1)[0]
+    return owner or None
+
+
 # ---- ssh -------------------------------------------------------------------
 
 
@@ -300,6 +337,24 @@ def gh_switch_account(account: str) -> None:
             f"Hint: run `gh auth login --hostname github.com` "
             f"to add the account first."
         )
+
+
+def gh_auth_token(login: str, *, gh_path: str | None = None) -> str | None:
+    """Return the stored token for ``login``, or ``None`` when unavailable.
+
+    Uses ``gh auth token --user <login>``, the mechanism gh's own
+    multiple-accounts doc recommends for automated switching. Reads the
+    keyring only -- no network, and the active account is untouched.
+
+    ``gh_path`` lets the guard invoke the *real* gh binary by absolute path so
+    the lookup never re-enters the PATH shim.
+    """
+    if gh_path is None:
+        _require("gh")
+    result = _run([gh_path or "gh", "auth", "token", "--user", login])
+    if result.returncode == 0 and result.stdout:
+        return result.stdout
+    return None
 
 
 def gh_account_available(login: str) -> bool:

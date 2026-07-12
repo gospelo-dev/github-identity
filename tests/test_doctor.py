@@ -394,3 +394,93 @@ def test_doctor_config_error_exits_two(
     with pytest.raises(SystemExit) as exc:
         doctor.main()
     assert exc.value.code == 2
+
+
+# ---------------------------------------------------------------------------
+# Fail-closed hygiene (ambient credentials / owners mode)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _no_ambient_tokens(monkeypatch: pytest.MonkeyPatch):
+    """Keep every doctor test hermetic: the ambient-credential audit reads the
+    real process environment, so a developer shell with GH_TOKEN exported must
+    not flip unrelated tests to WARN."""
+    monkeypatch.delenv("GH_TOKEN", raising=False)
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+
+
+def test_ambient_token_warns(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GH_TOKEN", "ghp_ambient")
+    findings = doctor._ambient_credential_findings()
+    assert findings[0][0] == "WARN"
+    assert "GH_TOKEN" in findings[0][1]
+
+
+def test_both_ambient_tokens_named(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GH_TOKEN", "a")
+    monkeypatch.setenv("GITHUB_TOKEN", "b")
+    findings = doctor._ambient_credential_findings()
+    assert findings[0][0] == "WARN"
+    assert "GH_TOKEN, GITHUB_TOKEN" in findings[0][1]
+
+
+def test_no_ambient_token_is_ok() -> None:
+    findings = doctor._ambient_credential_findings()
+    assert findings[0][0] == "OK"
+
+
+_OWNERS_CONFIG = (
+    'version: "1"\n'
+    "profiles:\n"
+    "  gospelo:\n"
+    "    git: {user.name: gorosun, user.email: goro@ns.net}\n"
+    "    gh: {account: gorosun, owners: [gospelo-dev]}\n"
+    "    paths: ['~/projects/gospelo-dev/**']\n"
+    "  bare:\n"
+    "    git: {user.name: gorosun, user.email: goro@ns.net}\n"
+    "    gh: {account: gorosun-2}\n"
+    "    paths: ['~/projects/bare/**']\n"
+)
+
+
+def _load(write_config, text):
+    from gospelo_github_identity.config import load_config
+
+    return load_config(write_config(text))
+
+
+def test_machine_findings_report_enforce_mode(
+    write_config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "gospelo_github_identity._external.gh_account_available", lambda login: True
+    )
+    monkeypatch.setattr(
+        "gospelo_github_identity._external.git_get_config",
+        lambda key, cwd=None, scope=None: None,
+    )
+    config = _load(write_config, _OWNERS_CONFIG)
+
+    # The owners-declaring profile: enforce mode confirmed.
+    findings = doctor._machine_findings(config, config.profiles["gospelo"])
+    assert any(lvl == "OK" and "gh owners" in msg for lvl, msg in findings)
+
+    # A profile left behind without owners while others declare them: WARN.
+    findings = doctor._machine_findings(config, config.profiles["bare"])
+    assert any(lvl == "WARN" and "gh.owners" in msg for lvl, msg in findings)
+
+
+def test_machine_findings_report_legacy_mode(
+    write_config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "gospelo_github_identity._external.gh_account_available", lambda login: True
+    )
+    monkeypatch.setattr(
+        "gospelo_github_identity._external.git_get_config",
+        lambda key, cwd=None, scope=None: None,
+    )
+    config = _load(write_config, _CONFIG)  # no owners anywhere
+    findings = doctor._machine_findings(config, config.profiles["gospelo"])
+    assert any(lvl == "INFO" and "legacy" in msg for lvl, msg in findings)

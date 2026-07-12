@@ -238,6 +238,12 @@ def _prompt_profile(existing: set[str]) -> Profile:
     git_user_email = _prompt("git user.email")
     gh_account = _prompt("gh CLI account login")
 
+    raw_owners = _prompt_optional(
+        "GitHub owners this identity writes to, comma-separated "
+        "(enables target-aware guard enforcement)"
+    )
+    gh_owners = [o.strip() for o in raw_owners.split(",") if o.strip()]
+
     print("Paths (one per line, empty line to finish):")
     paths: list[str] = []
     while True:
@@ -255,6 +261,7 @@ def _prompt_profile(existing: set[str]) -> Profile:
         git_user_name=git_user_name,
         git_user_email=git_user_email,
         gh_account=gh_account,
+        gh_owners=gh_owners,
         paths=paths,
     )
 

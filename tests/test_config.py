@@ -366,3 +366,82 @@ def test_save_config_round_trip_preserves_ssh(tmp_path: Path) -> None:
     assert rq.ssh_check is True
     assert rq.ssh_login is None
     assert rq.expected_ssh_login == "vlogin"
+
+
+# ---------------------------------------------------------------------------
+# gh.owners (target-aware enforcement opt-in)
+# ---------------------------------------------------------------------------
+
+OWNERS_YAML = """\
+version: "1"
+profiles:
+  oss:
+    git: {user.name: Alice, user.email: alice@example.com}
+    gh:
+      account: alice-oss
+      owners: [alice-oss, Alice-Org]
+    paths: []
+  work:
+    git: {user.name: Alice, user.email: alice@company.example}
+    gh:
+      account: alice-work
+    paths: []
+"""
+
+
+def test_owners_parsed_and_default_empty(write_config):
+    from gospelo_github_identity.config import load_config
+
+    config = load_config(write_config(OWNERS_YAML))
+    assert config.profiles["oss"].gh_owners == ["alice-oss", "Alice-Org"]
+    assert config.profiles["work"].gh_owners == []
+
+
+def test_owners_declared_and_reverse_lookup(write_config):
+    from gospelo_github_identity.config import load_config
+
+    config = load_config(write_config(OWNERS_YAML))
+    assert config.owners_declared() is True
+    assert config.profile_for_owner("alice-oss").name == "oss"
+    # Case-insensitive, mirroring GitHub login semantics.
+    assert config.profile_for_owner("ALICE-ORG").name == "oss"
+    assert config.profile_for_owner("stranger") is None
+
+
+def test_owners_declared_false_without_any(write_config):
+    from gospelo_github_identity.config import load_config
+
+    yaml_text = OWNERS_YAML.replace("      owners: [alice-oss, Alice-Org]\n", "")
+    config = load_config(write_config(yaml_text))
+    assert config.owners_declared() is False
+
+
+def test_owners_must_be_a_list(write_config):
+    from gospelo_github_identity.config import ConfigError, load_config
+
+    bad = OWNERS_YAML.replace(
+        "owners: [alice-oss, Alice-Org]", "owners: alice-oss"
+    )
+    with pytest.raises(ConfigError, match="'gh.owners' must be a list"):
+        load_config(write_config(bad))
+
+
+def test_owners_entries_must_be_nonempty_strings(write_config):
+    from gospelo_github_identity.config import ConfigError, load_config
+
+    bad = OWNERS_YAML.replace(
+        "owners: [alice-oss, Alice-Org]", "owners: [alice-oss, '']"
+    )
+    with pytest.raises(ConfigError, match="non-empty strings"):
+        load_config(write_config(bad))
+
+
+def test_duplicate_owner_across_profiles_rejected(write_config):
+    from gospelo_github_identity.config import ConfigError, load_config
+
+    bad = OWNERS_YAML.replace(
+        "      account: alice-work\n",
+        "      account: alice-work\n      owners: [ALICE-OSS]\n",
+    )
+    with pytest.raises(ConfigError, match="only one profile"):
+        load_config(write_config(bad))

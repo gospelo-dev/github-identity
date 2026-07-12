@@ -215,6 +215,7 @@ def test_interactive_init_writes_valid_config(
             "Test User",         # git user.name
             "test-user@example.com",  # git user.email
             "test-login",        # gh account
+            "test-login, test-org",   # gh owners (optional, comma-separated)
             "~/projects/personal/**",  # path 1
             "",                  # finish paths
             "n",                 # add another profile? -> no
@@ -240,6 +241,8 @@ def test_interactive_init_writes_valid_config(
     p = cfg.profiles["personal"]
     assert p.git_user_email == "test-user@example.com"
     assert p.gh_account == "test-login"
+    assert p.gh_owners == ["test-login", "test-org"]  # round-trips via save_config
+    assert p.paths == ["~/projects/personal/**"]
     assert cfg.default_profile == "personal"
 
 

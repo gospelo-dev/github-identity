@@ -386,3 +386,56 @@ def test_gh_account_available_false_on_error(mock_subprocess) -> None:
 def test_gh_account_available_false_on_empty(mock_subprocess) -> None:
     mock_subprocess.set("gh auth token --user ghost", returncode=0, stdout="")
     assert _external.gh_account_available("ghost") is False
+
+
+# ---------------------------------------------------------------------------
+# owner_from_remote_url
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "url,expected",
+    [
+        ("git@github.com:acme/tool.git", "acme"),
+        ("git@gospelo-dev:acme/tool.git", "acme"),        # SSH-alias host
+        ("gospelo-dev:acme/tool", "acme"),                # alias without user@
+        ("ssh://git@github.com/acme/tool.git", "acme"),
+        ("ssh://git@github.com:2222/acme/tool.git", "acme"),
+        ("https://github.com/acme/tool.git", "acme"),
+        ("https://github.com/acme/tool", "acme"),
+        ("git://github.com/acme/tool.git", "acme"),
+        ("https://github.com/", None),                    # no owner segment
+        ("/data/repos/tool.git", None),                   # local path
+        ("../relative/repo", None),
+        ("file:///data/repos/tool.git", None),            # non-remote scheme
+        ("", None),
+    ],
+)
+def test_owner_from_remote_url(url, expected) -> None:
+    assert _external.owner_from_remote_url(url) == expected
+
+
+# ---------------------------------------------------------------------------
+# gh_auth_token
+# ---------------------------------------------------------------------------
+
+
+def test_gh_auth_token_returns_token(mock_subprocess) -> None:
+    mock_subprocess.set("auth token --user alice", stdout="ghp_secret\n")
+    assert _external.gh_auth_token("alice") == "ghp_secret"
+
+
+def test_gh_auth_token_missing_returns_none(mock_subprocess) -> None:
+    mock_subprocess.set(
+        "auth token --user ghost", returncode=1,
+        stderr="no accounts matched",
+    )
+    assert _external.gh_auth_token("ghost") is None
+
+
+def test_gh_auth_token_uses_explicit_gh_path(mock_subprocess) -> None:
+    """The guard passes the REAL gh path so the lookup never re-enters the
+    PATH shim."""
+    mock_subprocess.set("/opt/real/gh auth token --user alice", stdout="tok")
+    assert _external.gh_auth_token("alice", gh_path="/opt/real/gh") == "tok"
+    assert mock_subprocess.calls[-1].startswith("/opt/real/gh ")

@@ -101,7 +101,7 @@ def main() -> None:
     # ---- machine-level -----------------------------------------------------
     print("\n[machine]")
     try:
-        for finding in _machine_findings(profile):
+        for finding in _machine_findings(config, profile):
             worst = _emit(finding, worst)
     except _external.ExternalToolError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
@@ -164,7 +164,7 @@ def _emit(finding: Finding, worst: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _machine_findings(profile: Profile) -> list[Finding]:
+def _machine_findings(config: Config, profile: Profile) -> list[Finding]:
     findings: list[Finding] = []
 
     gname = _external.git_get_config("user.name", scope="global")
@@ -187,8 +187,70 @@ def _machine_findings(profile: Profile) -> list[Finding]:
             (
                 "WARN",
                 f"gh account {profile.gh_account!r} is not logged in "
-                f"(switch / GH_TOKEN automation cannot act as it) -- "
+                f"(switch / guard token injection cannot act as it) -- "
                 f"run `gh auth login --hostname github.com`",
+            )
+        )
+
+    findings.extend(_ambient_credential_findings())
+
+    # Target-aware enforcement is opt-in via gh.owners; say which mode the
+    # guard is in so a half-migrated config is visible.
+    if config.owners_declared():
+        if profile.gh_owners:
+            findings.append(
+                (
+                    "OK",
+                    f"profile declares gh owners ({', '.join(profile.gh_owners)}); "
+                    f"guard enforces target-aware identity for gh writes",
+                )
+            )
+        else:
+            findings.append(
+                (
+                    "WARN",
+                    f"other profiles declare gh.owners but {profile.name!r} does "
+                    f"not -- gh writes targeting this profile's owners are "
+                    f"refused as unknown (fail-closed); declare its owners",
+                )
+            )
+    else:
+        findings.append(
+            (
+                "INFO",
+                "no profile declares gh.owners; guard runs in legacy cwd-based "
+                "check mode for gh -- declare gh.owners to enable target-aware "
+                "token injection",
+            )
+        )
+    return findings
+
+
+def _ambient_credential_findings() -> list[Finding]:
+    """Fail-closed holds only if bypass paths find no ambient credentials.
+
+    A ``GH_TOKEN``/``GITHUB_TOKEN`` parked in the shell environment (direnv,
+    exports in rc files) outranks everything for gh, silently overrides the
+    guard's per-invocation injection, and keeps working on paths that bypass
+    the shim -- exactly the ambient state this setup exists to remove.
+    """
+    findings: list[Finding] = []
+    ambient = [v for v in ("GH_TOKEN", "GITHUB_TOKEN") if os.environ.get(v, "").strip()]
+    if ambient:
+        findings.append(
+            (
+                "WARN",
+                f"ambient credential in the environment: {', '.join(ambient)} -- "
+                f"it overrides guard token injection and authenticates bypass "
+                f"paths; remove it (the guard injects per-invocation tokens)",
+            )
+        )
+    else:
+        findings.append(
+            (
+                "OK",
+                "no ambient GH_TOKEN/GITHUB_TOKEN in the environment "
+                "(bypass paths find no credentials there)",
             )
         )
     return findings

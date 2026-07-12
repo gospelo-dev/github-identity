@@ -2,35 +2,46 @@
 # Copyright (c) 2026 NoStudio LLC. All rights reserved.
 # Licensed under the MIT License. See LICENSE.md for details.
 
-"""Deterministic, local, fail-closed command guard for ``gh`` / ``git``.
+"""Deterministic, local, target-aware command guard for ``gh`` / ``git``.
 
 This shadows ``gh`` and ``git`` on ``PATH`` with tiny shim executables. Every
-invocation is routed through ``gospelo-github-identity guard``, which:
+invocation is routed through ``gospelo-github-identity guard``, which passes
+**read-only** commands straight through to the real binary, and gates **write**
+commands (``git push``; ``gh release/pr/repo/... create`` etc.):
 
-  * passes **read-only** commands straight through to the real binary, and
-  * for **write** commands (``git push``; ``gh release/pr/repo/... create`` etc.)
-    runs the directory's identity check first and **blocks** (non-zero exit,
-    real binary never executed) when the active git/gh identity does not match
-    the profile that owns the current directory.
+  * The write's **target** is resolved first — the ``--repo`` argument, the
+    ``git -C`` directory, or the working directory's remote — never just cwd.
+  * When any profile declares ``gh.owners``, the guard runs in **enforce mode**
+    for ``gh``: the target owner is reverse-mapped to a profile and that
+    profile's token is materialized (``gh auth token --user``) and injected as
+    ``GH_TOKEN`` into the single real invocation. The machine-global active
+    account stops mattering. An owner no profile declares, or an unresolvable
+    target from an ungoverned directory, is **refused** (fail-closed).
+  * With no ``owners`` declared anywhere, the guard stays in legacy **check
+    mode**: the active identity is compared against the governing profile and
+    mismatched writes are blocked; ungoverned directories pass through.
+  * ``git push`` is gated by the **target repo's** author config against the
+    profile governing that repo (by path, falling back to its remote owner).
 
 Design constraints (why this exists rather than depending on a third-party
 "command firewall"):
 
   * **Deterministic** — pure pattern logic, never an LLM. There is no prompt to
     inject.
-  * **Local** — nothing leaves the machine beyond the ``gh api user`` call the
-    check already makes.
-  * **Fail-closed within a declared profile** — a write under a matched profile
-    with a mismatched identity is blocked. Outside any declared profile (or when
-    ``GOSPELO_GITHUB_IDENTITY_SKIP`` is set) the real command runs unchanged, so the
-    guard never breaks unrelated work.
+  * **Local** — token materialization reads the gh keyring; the only network
+    call is the legacy mode's ``gh api user``.
+  * **Fail-closed where governed** — inside declared territory (a matched
+    profile, a declared owner) a wrong or unresolvable identity blocks the
+    write. Without a usable config the guard governs nothing and passes
+    through, so installing the shims never breaks unrelated machines.
 
 Limitations (documented, not silently assumed away):
 
   * A ``PATH`` shim only intercepts **name-based** calls. A command invoked by
-    absolute path (``/usr/bin/git push``) bypasses it. For tamper-resistance
-    against an adversarial process, layer an OS sandbox; the shim's job is to
-    stop *accidental* wrong-identity writes during autonomous agent runs.
+    absolute path (``/usr/bin/git push``) bypasses it. Pair the shim with the
+    ambient-credential discipline ``doctor`` audits (no ``GH_TOKEN`` parked in
+    the environment) so a bypassed path finds no credentials and fails safely.
+    For tamper-resistance against an adversarial process, layer an OS sandbox.
   * The write-classifier covers the common irreversible/outward subcommands; it
     is intentionally conservative (unknown subcommands pass through).
 """
@@ -39,6 +50,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import shutil
 import stat
 import sys
@@ -156,6 +168,95 @@ def is_write_invocation(tool: str, argv: list[str]) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Target resolution (pure, unit-tested)
+# ---------------------------------------------------------------------------
+
+_GH_API_REPOS_RE = re.compile(r"(?:^|/)repos/([^/]+)/[^/]+")
+
+
+def _repo_spec_owner(value: str) -> str | None:
+    """Owner from a gh repo spec: ``OWNER/REPO``, ``HOST/OWNER/REPO``, or a URL."""
+    value = value.strip()
+    if not value:
+        return None
+    if "://" in value:
+        return _external.owner_from_remote_url(value)
+    parts = [p for p in value.split("/") if p]
+    if len(parts) == 2:
+        return parts[0]
+    if len(parts) == 3:
+        return parts[1]  # HOST/OWNER/REPO
+    return None
+
+
+def gh_target_owner(argv: list[str]) -> str | None:
+    """Extract the GitHub owner a gh invocation targets, when determinable.
+
+    Sources, in priority order:
+
+      1. the ``--repo`` / ``-R`` flag (space or ``=`` form)
+      2. the positional ``OWNER/REPO`` spec directly after a ``gh repo``
+         action (``gh repo delete owner/x``) — only the token immediately
+         following the action, so a flag value is never mistaken for it
+      3. a ``repos/<owner>/<repo>`` segment in a ``gh api`` endpoint
+
+    Returns ``None`` when the invocation carries no repo target (``gh gist
+    create``, ``gh api /user``, ...).
+    """
+    for i, a in enumerate(argv):
+        if a in ("--repo", "-R") and i + 1 < len(argv):
+            return _repo_spec_owner(argv[i + 1])
+        if a.startswith("--repo="):
+            return _repo_spec_owner(a.split("=", 1)[1])
+
+    sub, action = _gh_sub_action(argv)
+    if sub == "repo" and action is not None:
+        try:
+            idx = argv.index(action)
+        except ValueError:
+            idx = -1
+        if 0 <= idx and idx + 1 < len(argv):
+            candidate = argv[idx + 1]
+            if not candidate.startswith("-") and "/" in candidate:
+                return _repo_spec_owner(candidate)
+    if sub == "api":
+        for a in argv:
+            if a.startswith("-"):
+                continue
+            m = _GH_API_REPOS_RE.search(a)
+            if m:
+                return m.group(1)
+    return None
+
+
+def git_target_dir(argv: list[str], cwd: Path) -> Path:
+    """The directory a git invocation operates on.
+
+    Successive ``-C`` values compose left-to-right (a relative path resolves
+    against the running composition), mirroring git's own semantics; an empty
+    ``-C ''`` is a documented no-op. Without ``-C`` the target is ``cwd``.
+    """
+    target = cwd
+    i = 0
+    while i < len(argv):
+        a = argv[i]
+        if a == "-C":
+            if i + 1 < len(argv) and argv[i + 1]:
+                nxt = Path(argv[i + 1])
+                target = nxt if nxt.is_absolute() else target / nxt
+            i += 2
+            continue
+        if a in _GIT_VALUE_FLAGS:
+            i += 2
+            continue
+        if a.startswith("-"):
+            i += 1
+            continue
+        break  # reached the subcommand
+    return target
+
+
+# ---------------------------------------------------------------------------
 # Runtime gate: `gospelo-github-identity guard --tool <t> --real <path> -- <args>`
 # ---------------------------------------------------------------------------
 
@@ -165,38 +266,176 @@ def _exec_real(real: str, argv: list[str]) -> None:
     os.execv(real, [real, *argv])
 
 
-def _identity_mismatches(tool: str, cwd: Path) -> tuple[str | None, list[str]]:
-    """Compare the active identity against the cwd's profile for a write.
+def _block(headline: str, cmd: str, fix_lines: list[str]) -> None:
+    """Print a BLOCKED report to stderr and exit 1. Never suppressed by QUIET."""
+    body = f"gospelo-github-identity guard: BLOCKED {headline}\n  command : {cmd}\n"
+    for i, line in enumerate(fix_lines):
+        body += ("  fix     : " if i == 0 else "            ") + line + "\n"
+    print(body.rstrip("\n"), file=sys.stderr)
+    sys.exit(1)
 
-    Returns ``(profile_name | None, mismatches)``. ``profile_name`` is None when
-    no profile governs this directory (-> caller passes through). A non-empty
-    ``mismatches`` list means the write must be blocked.
-    """
-    config = load_config()
-    match = resolve_profile(config, cwd)
+
+def _block_mismatch(profile_name: str, cmd: str, mismatches: list[str]) -> None:
+    body = (
+        f"gospelo-github-identity guard: BLOCKED write under profile "
+        f"{profile_name!r} — identity does not match.\n"
+        f"  command : {cmd}\n"
+        + "".join(f"  mismatch: {m}\n" for m in mismatches)
+        + f"  fix     : gospelo-github-identity switch {profile_name}\n"
+        f"            (if switch reports OK but this persists, the keyring "
+        f"credential is stale — re-login: gh auth logout --user <account> "
+        f"&& gh auth login)"
+    )
+    print(body, file=sys.stderr)
+    sys.exit(1)
+
+
+def _cmd_str(tool: str, cmd_argv: list[str]) -> str:
+    return f"{tool} {' '.join(cmd_argv)}".strip()
+
+
+def _gate_git(config, cmd_argv: list[str], real: str) -> None:
+    """Gate a ``git push``: the target repo's author config must match the
+    profile governing that repo (by path; falling back to its remote owner
+    when owners-based enforcement is enabled)."""
+    target = git_target_dir(cmd_argv, Path.cwd())
+    match = resolve_profile(config, target)
     profile = match.profile
-    if profile is None:
-        return None, []  # not a governed directory
 
-    # Prevent the check's own `gh api user` (which goes through the shim) from
+    # Prevent identity probes (which may themselves go through a shim) from
     # recursing back into the guard.
     os.environ[SKIP_ENV] = "1"
 
+    if profile is None and config.owners_declared():
+        url = _external.git_remote_url("origin", cwd=target)
+        owner = _external.owner_from_remote_url(url) if url else None
+        if owner is not None:
+            profile = config.profile_for_owner(owner)
+            if profile is None:
+                _block(
+                    f"git push targeting owner {owner!r} — no profile declares "
+                    f"this owner (fail-closed).",
+                    _cmd_str("git", cmd_argv),
+                    [
+                        f"add {owner!r} to the intended profile's gh.owners "
+                        f"in {config.source_path},",
+                        "or bypass once with GOSPELO_GITHUB_IDENTITY_SKIP=1",
+                    ],
+                )
+
+    if profile is None:
+        _notice("target repo not governed by any profile; passing through.")
+        _exec_real(real, cmd_argv)
+        return
+
+    # git push identity == the commit author (the TARGET repo's git config).
+    name = _external.git_get_config("user.name", cwd=target)
+    email = _external.git_get_config("user.email", cwd=target)
     mismatches: list[str] = []
-    if tool == "git":
-        # git push identity == the commit author (local git config).
-        name = _external.git_get_config("user.name", cwd=cwd)
-        email = _external.git_get_config("user.email", cwd=cwd)
-        if name != profile.git_user_name:
-            mismatches.append(f"git user.name={name!r} (expected {profile.git_user_name!r})")
-        if email != profile.git_user_email:
-            mismatches.append(f"git user.email={email!r} (expected {profile.git_user_email!r})")
-    else:  # gh
-        login = _external.gh_active_login()
-        if login != profile.gh_account:
-            shown = login if login is not None else "(unauthenticated/unverifiable)"
-            mismatches.append(f"gh account={shown!r} (expected {profile.gh_account!r})")
-    return profile.name, mismatches
+    if name != profile.git_user_name:
+        mismatches.append(f"git user.name={name!r} (expected {profile.git_user_name!r})")
+    if email != profile.git_user_email:
+        mismatches.append(f"git user.email={email!r} (expected {profile.git_user_email!r})")
+    if mismatches:
+        _block_mismatch(profile.name, _cmd_str("git", cmd_argv), mismatches)
+
+    _notice(f"identity OK for profile {profile.name!r}; passing through.")
+    _exec_real(real, cmd_argv)
+
+
+def _enforce_gh(profile, owner: str | None, source: str, real: str, cmd_argv: list[str]) -> None:
+    """Materialize the profile's token and exec the real gh with it injected."""
+    token = _external.gh_auth_token(profile.gh_account, gh_path=real)
+    if not token:
+        _block(
+            f"gh write for profile {profile.name!r} — no stored credential "
+            f"for account {profile.gh_account!r} (fail-closed).",
+            _cmd_str("gh", cmd_argv),
+            [f"gh auth login --hostname github.com   (as {profile.gh_account!r})"],
+        )
+    os.environ["GH_TOKEN"] = token
+    _notice(
+        f"enforcing identity {profile.gh_account!r} for {source} "
+        f"(profile {profile.name!r}); token injected."
+    )
+    _exec_real(real, cmd_argv)
+
+
+def _gate_gh(config, cmd_argv: list[str], real: str) -> None:
+    """Gate a gh write.
+
+    Enforce mode (any profile declares ``gh.owners``): resolve the target
+    owner, reverse-map it to a profile, inject that profile's token. Unknown
+    owners and unresolvable targets from ungoverned directories are refused.
+
+    Legacy check mode (no owners anywhere): compare the active account against
+    the cwd's profile; block on mismatch; pass through when ungoverned.
+    """
+    owners_enabled = config.owners_declared()
+
+    owner = gh_target_owner(cmd_argv)
+    source = f"target owner {owner!r}" if owner is not None else ""
+    if owner is None:
+        # No explicit target in the arguments: the operation acts on the
+        # cwd's repository (if any) -> derive the owner from its remote.
+        os.environ[SKIP_ENV] = "1"
+        url = _external.git_remote_url("origin", cwd=Path.cwd())
+        owner = _external.owner_from_remote_url(url) if url else None
+        source = f"cwd remote owner {owner!r}" if owner is not None else ""
+
+    if owners_enabled:
+        if owner is not None:
+            profile = config.profile_for_owner(owner)
+            if profile is None:
+                _block(
+                    f"gh write targeting owner {owner!r} — no profile declares "
+                    f"this owner (fail-closed).",
+                    _cmd_str("gh", cmd_argv),
+                    [
+                        f"add {owner!r} to the intended profile's gh.owners "
+                        f"in {config.source_path},",
+                        "or bypass once with GOSPELO_GITHUB_IDENTITY_SKIP=1",
+                    ],
+                )
+            _enforce_gh(profile, owner, source, real, cmd_argv)
+            return
+        # Repo-target-less operation (gh gist create, gh api /user, ...):
+        # fall back to the directory's profile; refuse when ungoverned.
+        match = resolve_profile(config, Path.cwd())
+        if match.profile is None:
+            _block(
+                "gh write with no resolvable target owner from a directory "
+                "governed by no profile (fail-closed).",
+                _cmd_str("gh", cmd_argv),
+                [
+                    "run it inside a governed directory, pass --repo <owner>/<repo>,",
+                    "declare the owner in a profile's gh.owners,",
+                    "or bypass once with GOSPELO_GITHUB_IDENTITY_SKIP=1",
+                ],
+            )
+        _enforce_gh(match.profile, None, "the working directory's profile", real, cmd_argv)
+        return
+
+    # ---- legacy check mode (no gh.owners declared anywhere) ----------------
+    match = resolve_profile(config, Path.cwd())
+    profile = match.profile
+    if profile is None:
+        _notice("directory not governed by any profile; passing through.")
+        _exec_real(real, cmd_argv)
+        return
+
+    os.environ[SKIP_ENV] = "1"
+    login = _external.gh_active_login()
+    if login != profile.gh_account:
+        shown = login if login is not None else "(unauthenticated/unverifiable)"
+        _block_mismatch(
+            profile.name,
+            _cmd_str("gh", cmd_argv),
+            [f"gh account={shown!r} (expected {profile.gh_account!r})"],
+        )
+
+    _notice(f"identity OK for profile {profile.name!r}; passing through.")
+    _exec_real(real, cmd_argv)
 
 
 def guard_main() -> None:
@@ -236,9 +475,9 @@ def guard_main() -> None:
         _exec_real(real, cmd_argv)
         return
 
-    # Write command: enforce identity for the governing profile.
+    # Write command: gate it against the operation's target.
     try:
-        profile_name, mismatches = _identity_mismatches(tool, Path.cwd())
+        config = load_config()
     except ConfigError:
         # No usable config -> the guard governs nothing; do not break the user.
         _notice(
@@ -247,37 +486,16 @@ def guard_main() -> None:
         )
         _exec_real(real, cmd_argv)
         return
+
+    try:
+        if tool == "git":
+            _gate_git(config, cmd_argv, real)
+        else:
+            _gate_gh(config, cmd_argv, real)
     except _external.ExternalToolError as exc:
         # Cannot determine identity for a governed write -> fail closed.
         print(f"gospelo-github-identity guard: BLOCKED ({exc})", file=sys.stderr)
         sys.exit(1)
-
-    if profile_name is None:
-        # Directory governed by no profile. Announce on writes so a path-glob
-        # typo (expected-to-be-governed dir that silently isn't) is visible.
-        _notice("directory not governed by any profile; passing through.")
-        _exec_real(real, cmd_argv)
-        return
-
-    if mismatches:
-        cmd = f"{tool} {' '.join(cmd_argv)}".strip()
-        print(
-            f"gospelo-github-identity guard: BLOCKED write under profile "
-            f"{profile_name!r} — identity does not match.\n"
-            f"  command : {cmd}\n"
-            + "".join(f"  mismatch: {m}\n" for m in mismatches)
-            + f"  fix     : gospelo-github-identity switch {profile_name}\n"
-            f"            (if switch reports OK but this persists, the keyring "
-            f"credential is stale — re-login: gh auth logout --user <account> "
-            f"&& gh auth login)",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    # Identity matches -> allow, with a positive confirmation so the user can
-    # see enforcement actually ran and passed (not silently skipped).
-    _notice(f"identity OK for profile {profile_name!r}; passing through.")
-    _exec_real(real, cmd_argv)
 
 
 # ---------------------------------------------------------------------------

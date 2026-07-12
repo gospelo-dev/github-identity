@@ -1,7 +1,7 @@
 # gospelo-github-identity 設定ファイル サンプル (基本構成)
 #
 # 配置先: ~/.config/gospelo-github-identity/config.yml
-#         (XDG_CONFIG_HOME が設定されていればそちらを優先)
+#         (環境変数 GOSPELO_GITHUB_IDENTITY_CONFIG で別パスを指定可能)
 #
 # このファイルは公開用サンプルです。実際に使う設定は
 # ~/.config/gospelo-github-identity/config.yml に置いてください。
@@ -14,6 +14,7 @@
 # - ディレクトリベースで「期待される profile」を定義
 # - gospelo-github-identity check で git/gh の現状と期待を照合
 # - gospelo-github-identity switch <profile> で git config + gh CLI を一括切替
+# - gh.owners を宣言すると guard が対象 owner 基準でトークンを注入 (target-aware)
 #
 # 詳細: https://github.com/gospelo-dev/github-identity/blob/main/docs/manual/ja/config-format.md
 
@@ -28,6 +29,11 @@ profiles:
       user.email: "<your-email@example.com>"
     gh:
       account: "<your-github-login>"
+      # (推奨) この profile の identity で書き込む GitHub owner (ユーザー / org)。
+      # 宣言すると guard は操作対象 (--repo / 対象 repo の remote) の owner から
+      # profile を逆引きし、呼び出しごとに正しいトークンを注入する (enforce 型)。
+      # どの profile にも属さない owner への書き込みは実行前に拒否される (fail-closed)。
+      owners: ["<your-github-login>", "<your-oss-org>"]
     # (任意) SSH ログイン検証を有効化。ssh-agent に別アカウントの鍵が載っていて
     # git push が別人として認証される盲点を check で検出する。
     # `ssh: {}` だけで期待ログインは gh.account を使用。詳細は config-format.md。
@@ -44,6 +50,7 @@ profiles:
       user.email: "<your-email@company.com>"
     gh:
       account: "<your-work-github-login>"
+      owners: ["<your-company-org>"]
     paths:
       - ~/projects/work/**
 

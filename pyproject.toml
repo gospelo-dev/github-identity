@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "gospelo-github-identity"
-version = "0.1.1"
+version = "0.2.0"
 description = "Directory-aware git/gh CLI identity guard: prevent account mix-ups across personal and work GitHub profiles"
 readme = "README.md"
 license = "MIT"

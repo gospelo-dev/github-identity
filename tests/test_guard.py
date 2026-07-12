@@ -127,14 +127,15 @@ def test_readonly_is_silent(monkeypatch, captured_exec, mock_external, capsys):
 
 
 def test_write_ungoverned_dir_announces_passthrough(
-    monkeypatch, captured_exec, isolated_config, tmp_home, mock_external, capsys
+    monkeypatch, captured_exec, tmp_home, minimal_config_file, mock_external, capsys
 ):
-    """Config valid but the cwd matches no profile (and no default): the write
-    passes through, but it must SAY SO — a silent pass-through could mask a
-    path-glob typo."""
-    monkeypatch.setattr(
-        guard, "_identity_mismatches", lambda tool, cwd: (None, [])
-    )
+    """Config valid but the target matches no profile (and no default): the
+    write passes through, but it must SAY SO — a silent pass-through could
+    mask a path-glob typo."""
+    monkeypatch.setenv("GOSPELO_GITHUB_IDENTITY_CONFIG", str(minimal_config_file))
+    outside = tmp_home / "elsewhere"
+    outside.mkdir()
+    monkeypatch.chdir(outside)
     _run_guard(monkeypatch, "git", "/usr/bin/git", ["push"])
     assert captured_exec == [("/usr/bin/git", ["/usr/bin/git", "push"])]
     assert "not governed" in capsys.readouterr().err
@@ -267,3 +268,228 @@ def test_guard_selftest_exits_zero(monkeypatch, capsys):
     monkeypatch.setattr("sys.argv", ["gospelo-github-identity guard", "--selftest"])
     guard.guard_main()  # returns normally (no SystemExit)
     assert "ok" in capsys.readouterr().out
+
+
+# ---------------------------------------------------------------------------
+# Target resolution (pure)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "argv,expected",
+    [
+        (["pr", "create", "--repo", "acme-corp/tool"], "acme-corp"),
+        (["pr", "create", "-R", "acme-corp/tool"], "acme-corp"),
+        (["release", "create", "v1", "--repo=acme-corp/tool"], "acme-corp"),
+        (["pr", "create", "--repo", "github.com/acme-corp/tool"], "acme-corp"),
+        (["pr", "create", "--repo", "https://github.com/acme-corp/tool"], "acme-corp"),
+        (["repo", "delete", "acme-corp/tool", "--yes"], "acme-corp"),
+        (["repo", "edit", "acme-corp/tool", "--visibility", "private"], "acme-corp"),
+        # A flag value must never be mistaken for the positional repo spec.
+        (["repo", "edit", "--description", "a/b"], None),
+        (["api", "-X", "POST", "/repos/acme-corp/tool/issues"], "acme-corp"),
+        (["api", "repos/acme-corp/tool/releases", "-f", "tag=v1"], "acme-corp"),
+        (["api", "/user", "-f", "name=x"], None),
+        (["pr", "create"], None),
+        (["gist", "create", "notes.md"], None),
+        ([], None),
+    ],
+)
+def test_gh_target_owner(argv, expected):
+    assert guard.gh_target_owner(argv) == expected
+
+
+@pytest.mark.parametrize(
+    "argv,expected",
+    [
+        (["push"], "/base"),
+        (["-C", "/repo", "push"], "/repo"),
+        (["-C", "a", "push"], "/base/a"),
+        (["-C", "a", "-C", "b", "push"], "/base/a/b"),          # composes
+        (["-C", "a", "-C", "/abs", "push"], "/abs"),
+        (["-C", "", "push"], "/base"),                          # documented no-op
+        (["-c", "user.name=x", "push"], "/base"),               # value flag skipped
+        (["push", "-C", "/late"], "/base"),                     # after subcommand: ignored
+    ],
+)
+def test_git_target_dir(argv, expected):
+    assert guard.git_target_dir(argv, Path("/base")) == Path(expected)
+
+
+# ---------------------------------------------------------------------------
+# Enforce mode (gh.owners declared -> token injection, fail-closed)
+# ---------------------------------------------------------------------------
+
+OWNERS_CONFIG_YAML = """\
+version: "1"
+profiles:
+  personal:
+    git: {user.name: "Alice Example", user.email: "alice@example.com"}
+    gh:
+      account: "alice-personal"
+      owners: [alice-personal, alice-oss-org]
+    paths:
+      - ~/projects/personal/**
+  work:
+    git: {user.name: "Alice Example", user.email: "alice@company.example"}
+    gh:
+      account: "alice-work"
+      owners: [acme-corp]
+    paths:
+      - ~/projects/work/**
+"""
+
+
+@pytest.fixture
+def owners_config(tmp_home, write_config, monkeypatch):
+    cfg = write_config(OWNERS_CONFIG_YAML)
+    monkeypatch.setenv("GOSPELO_GITHUB_IDENTITY_CONFIG", str(cfg))
+    return cfg
+
+
+@pytest.fixture
+def token_store(monkeypatch):
+    """Stub the keyring: account -> token. Records lookups (incl. gh_path)."""
+    store = {"alice-personal": "tok-personal", "alice-work": "tok-work"}
+    calls: list[tuple[str, str | None]] = []
+
+    def fake_token(login, *, gh_path=None):
+        calls.append((login, gh_path))
+        return store.get(login)
+
+    monkeypatch.setattr("gospelo_github_identity._external.gh_auth_token", fake_token)
+    monkeypatch.delenv("GH_TOKEN", raising=False)  # registers teardown restore
+    return calls
+
+
+def test_enforce_repo_flag_wins_over_cwd(
+    monkeypatch, captured_exec, owners_config, tmp_home, mock_external, token_store, capsys
+):
+    """`gh --repo acme-corp/x` from a personal dir must act as the WORK
+    identity: the target owner outranks the working directory."""
+    cwd = tmp_home / "projects" / "personal" / "repo"
+    cwd.mkdir(parents=True)
+    monkeypatch.chdir(cwd)
+    _run_guard(monkeypatch, "gh", "/usr/bin/gh",
+               ["pr", "create", "--repo", "acme-corp/tool"])
+    assert captured_exec == [
+        ("/usr/bin/gh", ["/usr/bin/gh", "pr", "create", "--repo", "acme-corp/tool"])
+    ]
+    assert os.environ["GH_TOKEN"] == "tok-work"
+    assert token_store == [("alice-work", "/usr/bin/gh")]  # real binary, not the shim
+    assert "enforcing identity 'alice-work'" in capsys.readouterr().err
+
+
+def test_enforce_unknown_owner_blocks(
+    monkeypatch, captured_exec, owners_config, tmp_home, mock_external, token_store, capsys
+):
+    cwd = tmp_home / "projects" / "personal" / "repo"
+    cwd.mkdir(parents=True)
+    monkeypatch.chdir(cwd)
+    with pytest.raises(SystemExit) as exc:
+        _run_guard(monkeypatch, "gh", "/usr/bin/gh",
+                   ["pr", "create", "--repo", "stranger-org/tool"])
+    assert exc.value.code == 1
+    assert captured_exec == []
+    err = capsys.readouterr().err
+    assert "BLOCKED" in err and "stranger-org" in err and "gh.owners" in err
+
+
+def test_enforce_cwd_remote_resolves_owner(
+    monkeypatch, captured_exec, owners_config, tmp_home, mock_external, token_store
+):
+    """No --repo: the cwd repo's remote owner decides, even from an
+    ungoverned directory (target-aware, not cwd-aware)."""
+    outside = tmp_home / "elsewhere"
+    outside.mkdir()
+    monkeypatch.chdir(outside)
+    mock_external["remote_url"] = "git@gospelo-dev:alice-oss-org/lib.git"
+    _run_guard(monkeypatch, "gh", "/usr/bin/gh", ["release", "create", "v1"])
+    assert captured_exec != []
+    assert os.environ["GH_TOKEN"] == "tok-personal"
+
+
+def test_enforce_targetless_falls_back_to_cwd_profile(
+    monkeypatch, captured_exec, owners_config, tmp_home, mock_external, token_store
+):
+    cwd = tmp_home / "projects" / "work" / "repo"
+    cwd.mkdir(parents=True)
+    monkeypatch.chdir(cwd)
+    mock_external["remote_url"] = None  # not a repo / no remote
+    _run_guard(monkeypatch, "gh", "/usr/bin/gh", ["gist", "create", "notes.md"])
+    assert captured_exec != []
+    assert os.environ["GH_TOKEN"] == "tok-work"
+
+
+def test_enforce_targetless_ungoverned_blocks(
+    monkeypatch, captured_exec, owners_config, tmp_home, mock_external, token_store, capsys
+):
+    outside = tmp_home / "elsewhere"
+    outside.mkdir()
+    monkeypatch.chdir(outside)
+    mock_external["remote_url"] = None
+    with pytest.raises(SystemExit) as exc:
+        _run_guard(monkeypatch, "gh", "/usr/bin/gh", ["gist", "create", "notes.md"])
+    assert exc.value.code == 1
+    assert captured_exec == []
+    assert "fail-closed" in capsys.readouterr().err
+
+
+def test_enforce_missing_credential_blocks(
+    monkeypatch, captured_exec, owners_config, tmp_home, mock_external, capsys
+):
+    monkeypatch.setattr(
+        "gospelo_github_identity._external.gh_auth_token",
+        lambda login, *, gh_path=None: None,
+    )
+    monkeypatch.delenv("GH_TOKEN", raising=False)
+    cwd = tmp_home / "projects" / "personal" / "repo"
+    cwd.mkdir(parents=True)
+    monkeypatch.chdir(cwd)
+    with pytest.raises(SystemExit) as exc:
+        _run_guard(monkeypatch, "gh", "/usr/bin/gh",
+                   ["pr", "create", "--repo", "acme-corp/tool"])
+    assert exc.value.code == 1
+    assert captured_exec == []
+    assert "no stored credential" in capsys.readouterr().err
+
+
+def test_git_push_gated_against_dash_c_target(
+    monkeypatch, captured_exec, isolated_config, tmp_home, capsys
+):
+    """`git -C <work-repo> push` from a personal dir must be judged by the
+    WORK repo's config, not the cwd's."""
+    personal = tmp_home / "projects" / "personal" / "repo"
+    work = tmp_home / "projects" / "work" / "repo"
+    personal.mkdir(parents=True)
+    work.mkdir(parents=True)
+    monkeypatch.chdir(personal)
+
+    def cwd_sensitive_config(key, cwd=None, **kwargs):
+        # The work repo carries the personal author -> mismatch for `work`.
+        values = {"user.name": "Alice Example", "user.email": "alice@example.com"}
+        return values.get(key)
+
+    monkeypatch.setattr(
+        "gospelo_github_identity._external.git_get_config", cwd_sensitive_config
+    )
+    with pytest.raises(SystemExit) as exc:
+        _run_guard(monkeypatch, "git", "/usr/bin/git", ["-C", str(work), "push"])
+    assert exc.value.code == 1
+    assert captured_exec == []
+    err = capsys.readouterr().err
+    assert "BLOCKED" in err and "'work'" in err  # judged as the work profile
+
+
+def test_git_push_unknown_owner_blocks_when_owners_enabled(
+    monkeypatch, captured_exec, owners_config, tmp_home, mock_external, capsys
+):
+    outside = tmp_home / "clones" / "third-party"
+    outside.mkdir(parents=True)
+    monkeypatch.chdir(outside)
+    mock_external["remote_url"] = "git@github.com:stranger-org/tool.git"
+    with pytest.raises(SystemExit) as exc:
+        _run_guard(monkeypatch, "git", "/usr/bin/git", ["push"])
+    assert exc.value.code == 1
+    assert captured_exec == []
+    assert "stranger-org" in capsys.readouterr().err

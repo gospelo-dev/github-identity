@@ -215,7 +215,7 @@ repo 対象を持たない操作で、cwd がどの profile の `paths` にも�
 - [CLI リファレンス](https://github.com/gospelo-dev/github-identity/blob/main/docs/manual/ja/cli-reference.md)
 - [設定ファイル仕様](https://github.com/gospelo-dev/github-identity/blob/main/docs/manual/ja/config-format.md)
 - [シェル統合ガイド](https://github.com/gospelo-dev/github-identity/blob/main/docs/manual/ja/shell-integration.md)
-- [アーキテクチャ設計 (enforce + fail-closed)](https://github.com/gospelo-dev/github-identity/blob/main/development/docs/architecture-enforce-fail-closed.md)
+- [アーキテクチャ設計 (enforce + fail-closed)](https://github.com/gospelo-dev/github-identity/blob/main/docs/architecture/enforce-fail-closed_ja.md)
 
 英語マニュアルは [`docs/manual/en/`](https://github.com/gospelo-dev/github-identity/tree/main/docs/manual/en) にあります ([README.md](https://github.com/gospelo-dev/github-identity/blob/main/README.md) も参照)。
 

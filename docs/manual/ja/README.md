@@ -36,4 +36,4 @@
 
 ## 対象バージョン
 
-このマニュアルは gospelo-github-identity **0.2.x** の実装に基づきます。0.2.0 で enforce 型アーキテクチャ (操作対象基準の解決 + `gh.owners` 逆引き + 呼び出しごとのトークン注入 + fail-closed) が実装されました。設計の背景は [設計ドキュメント](https://github.com/gospelo-dev/github-identity/blob/main/development/docs/architecture-enforce-fail-closed.md) を参照してください。
+このマニュアルは gospelo-github-identity **0.2.x** の実装に基づきます。0.2.0 で enforce 型アーキテクチャ (操作対象基準の解決 + `gh.owners` 逆引き + 呼び出しごとのトークン注入 + fail-closed) が実装されました。設計の背景は [設計ドキュメント](../../architecture/enforce-fail-closed_ja.md) を参照してください。

@@ -36,4 +36,4 @@ It operates at three levels:
 
 ## Version scope
 
-This manual documents the implementation of gospelo-github-identity **0.2.x**. Version 0.2.0 implemented the enforce-style architecture: target-based resolution, the `gh.owners` reverse map, per-invocation token injection, and fail-closed refusal. For the design background, see the [design document](https://github.com/gospelo-dev/github-identity/blob/main/development/docs/architecture-enforce-fail-closed.md).
+This manual documents the implementation of gospelo-github-identity **0.2.x**. Version 0.2.0 implemented the enforce-style architecture: target-based resolution, the `gh.owners` reverse map, per-invocation token injection, and fail-closed refusal. For the design background, see the [design document](../../architecture/enforce-fail-closed.md).

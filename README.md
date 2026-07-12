@@ -215,7 +215,7 @@ An operation with no repo target, and the cwd matches no profile's `paths`. Add 
 - [CLI reference](https://github.com/gospelo-dev/github-identity/blob/main/docs/manual/en/cli-reference.md)
 - [Config format](https://github.com/gospelo-dev/github-identity/blob/main/docs/manual/en/config-format.md)
 - [Shell integration](https://github.com/gospelo-dev/github-identity/blob/main/docs/manual/en/shell-integration.md)
-- [Architecture design (enforce + fail-closed)](https://github.com/gospelo-dev/github-identity/blob/main/development/docs/architecture-enforce-fail-closed.md)
+- [Architecture design (enforce + fail-closed)](https://github.com/gospelo-dev/github-identity/blob/main/docs/architecture/enforce-fail-closed.md)
 
 The Japanese manual lives in [`docs/manual/ja/`](https://github.com/gospelo-dev/github-identity/tree/main/docs/manual/ja) (see also [README_ja.md](https://github.com/gospelo-dev/github-identity/blob/main/README_ja.md)).
 

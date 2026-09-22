@@ -16,7 +16,7 @@ gh auth status                         # list authenticated accounts
 ## Installation
 
 ```bash
-pip install gospelo-github-identity
+uv tool install gospelo-github-identity
 ```
 
 Verify:

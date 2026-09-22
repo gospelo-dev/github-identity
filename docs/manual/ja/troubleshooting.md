@@ -87,7 +87,7 @@ repo 対象を持たない書き込み (`gh gist create` 等) を、どの profi
 PATH 上の `gospelo-github-identity` が `guard` サブコマンドを持たない古いビルドです。現行ビルドを再インストールしてから再実行してください:
 
 ```bash
-pip install -U gospelo-github-identity   # または uv tool install --force .
+uv tool install --force gospelo-github-identity
 gospelo-github-identity install-guard
 ```
 

@@ -95,10 +95,10 @@ flowchart TB
 ## インストール
 
 ```bash
-pip install gospelo-github-identity
+uv tool install gospelo-github-identity
 ```
 
-Python 3.11+ が必要です。`git` および [`gh` CLI](https://cli.github.com/) が `PATH` 上にあること。
+`uv` と Python 3.11+ が必要です。`git` および [`gh` CLI](https://cli.github.com/) が `PATH` 上にあること。`python -m` による直接起動は行わないでください。
 
 ## クイックスタート — エージェントに任せる前の 4 ステップ
 
@@ -122,6 +122,23 @@ gh --repo <owner>/<repo> repo view   # owner に対応する profile のトー�
 ```
 
 エージェント側には追加設定は不要です (PATH シムがすべての `gh` / `git` 呼び出しを捕捉)。さらに書き込み前チェックを重ねたい場合は [エージェントスキル](#エージェントスキル) を配置してください。
+
+### 任意: Gitコミットフック
+
+コミットメッセージから `Co-Authored-By` 行を自動的に除去する場合は、グローバルGitフックをインストールします。CLIは `uv tool` でインストールしたものを使用してください。
+
+```bash
+gospelo-github-identity install-commit-hook
+git config --global --get core.hooksPath
+```
+
+解除する場合:
+
+```bash
+gospelo-github-identity uninstall-commit-hook
+```
+
+この設定はGitの `core.hooksPath` を使用します。リポジトリ側で独自の `core.hooksPath` (husky等) を設定している場合は、リポジトリ側の設定が優先されます。その場合は対象リポジトリのフック構成へ `gospelo-github-identity strip-coauthors` を個別に組み込んでください。
 
 ## CLI コマンド一覧
 

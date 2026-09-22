@@ -87,7 +87,7 @@ A `GH_TOKEN` / `GITHUB_TOKEN` is parked in your shell environment (a direnv `.en
 The `gospelo-github-identity` on PATH is a stale build without the `guard` subcommand. Reinstall the current build, then re-run:
 
 ```bash
-pip install -U gospelo-github-identity   # or: uv tool install --force .
+uv tool install --force gospelo-github-identity
 gospelo-github-identity install-guard
 ```
 

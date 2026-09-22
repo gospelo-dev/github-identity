@@ -95,10 +95,10 @@ Dashed arrows are reads or bypass paths; solid arrows are the enforced flow that
 ## Installation
 
 ```bash
-pip install gospelo-github-identity
+uv tool install gospelo-github-identity
 ```
 
-Requires Python 3.11+, with `git` and the [`gh` CLI](https://cli.github.com/) on `PATH`.
+Requires `uv` and Python 3.11+, with `git` and the [`gh` CLI](https://cli.github.com/) on `PATH`. Do not invoke the package with `python -m`.
 
 ## Quick start — four steps before handing the keys to an agent
 
@@ -122,6 +122,23 @@ gh --repo <owner>/<repo> repo view   # runs with the token of the profile that o
 ```
 
 No agent-side configuration is needed (the PATH shim intercepts every `gh` / `git` call). To layer an additional pre-write check on the agent itself, install the [agent skills](#agent-skills).
+
+### Optional: Git commit hook
+
+To automatically remove `Co-Authored-By` trailers from commit messages, install the global Git hook. Use the CLI installed through `uv tool`.
+
+```bash
+gospelo-github-identity install-commit-hook
+git config --global --get core.hooksPath
+```
+
+To remove it:
+
+```bash
+gospelo-github-identity uninstall-commit-hook
+```
+
+This uses Git's `core.hooksPath`. A repository-specific `core.hooksPath` (for example, from husky) takes precedence over the global setting. In that case, add `gospelo-github-identity strip-coauthors` to that repository's hook configuration instead.
 
 ## CLI commands
 

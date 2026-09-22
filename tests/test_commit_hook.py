@@ -2,8 +2,8 @@
 # Copyright (c) 2026 NoStudio LLC. All rights reserved.
 # Licensed under the MIT License. See LICENSE.md for details.
 
-"""Tests for ``gospelo_github_identity.commit_hook`` — Co-Authored-By stripping plus
-the global commit-msg hook install/uninstall."""
+"""Tests for ``gospelo_github_identity.commit_hook`` — AI trace stripping,
+forbidden word blocking, and the global commit-msg hook install/uninstall."""
 
 from __future__ import annotations
 
@@ -53,14 +53,94 @@ def test_empty_after_strip():
     assert commit_hook.strip_coauthored_by("Co-authored-by: X <x@y>\n") == ""
 
 
+def test_strips_claude_session_line():
+    msg = "feat: thing\n\nClaude-Session: https://claude.ai/code/session_01abc\n"
+    assert commit_hook.strip_coauthored_by(msg) == "feat: thing\n"
+
+
+def test_strips_mixed_ai_trailers():
+    msg = (
+        "fix: patch\n\n"
+        "Co-Authored-By: AI <noreply@anthropic.com>\n"
+        "Claude-Session: https://claude.ai/code/session_xyz\n"
+    )
+    assert commit_hook.strip_coauthored_by(msg) == "fix: patch\n"
+
+
+def test_strips_claude_session_case_insensitive():
+    msg = "t\n\n  CLAUDE-SESSION:  https://example.com\n"
+    assert commit_hook.strip_coauthored_by(msg) == "t\n"
+
+
+# ---------------------------------------------------------------------------
+# find_forbidden_words (pure)
+# ---------------------------------------------------------------------------
+
+
+def test_finds_forbidden_words():
+    assert commit_hook.find_forbidden_words("Built with Claude and Anthropic SDK") == [
+        "Anthropic", "Claude",
+    ]
+
+
+def test_finds_all_model_names():
+    text = "Claude Fable Opus Sonnet Haiku Anthropic"
+    result = commit_hook.find_forbidden_words(text)
+    assert result == ["Anthropic", "Claude", "Fable", "Haiku", "Opus", "Sonnet"]
+
+
+def test_forbidden_words_case_insensitive():
+    assert commit_hook.find_forbidden_words("used claude and ANTHROPIC") == [
+        "ANTHROPIC", "claude",
+    ]
+
+
+def test_no_forbidden_words():
+    assert commit_hook.find_forbidden_words("feat: add user auth") == []
+
+
+def test_forbidden_words_word_boundary():
+    assert commit_hook.find_forbidden_words("excluded claudebot") == []
+
+
+# ---------------------------------------------------------------------------
+# strip_main integration
+# ---------------------------------------------------------------------------
+
+
 def test_strip_main_rewrites_file(tmp_path, monkeypatch):
     f = tmp_path / "COMMIT_EDITMSG"
-    f.write_text("feat: y\n\nCo-Authored-By: Claude <noreply@anthropic.com>\n", encoding="utf-8")
+    f.write_text("feat: y\n\nCo-Authored-By: Bot <noreply@example.com>\n", encoding="utf-8")
     monkeypatch.setattr("sys.argv", ["strip-coauthors", str(f)])
     with pytest.raises(SystemExit) as exc:
         commit_hook.strip_main()
     assert exc.value.code == 0
     assert f.read_text(encoding="utf-8") == "feat: y\n"
+
+
+def test_strip_main_blocks_forbidden_words(tmp_path, monkeypatch, capsys):
+    f = tmp_path / "COMMIT_EDITMSG"
+    f.write_text("feat: integrate Claude API\n", encoding="utf-8")
+    monkeypatch.setattr("sys.argv", ["strip-coauthors", str(f)])
+    with pytest.raises(SystemExit) as exc:
+        commit_hook.strip_main()
+    assert exc.value.code == 1
+    assert "BLOCKED" in capsys.readouterr().err
+
+
+def test_strip_main_strips_then_passes_when_clean(tmp_path, monkeypatch):
+    f = tmp_path / "COMMIT_EDITMSG"
+    f.write_text(
+        "feat: add auth\n\n"
+        "Co-Authored-By: Bot <noreply@example.com>\n"
+        "Claude-Session: https://example.com/session_abc\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("sys.argv", ["strip-coauthors", str(f)])
+    with pytest.raises(SystemExit) as exc:
+        commit_hook.strip_main()
+    assert exc.value.code == 0
+    assert f.read_text(encoding="utf-8") == "feat: add auth\n"
 
 
 # ---------------------------------------------------------------------------
@@ -122,3 +202,16 @@ def test_install_does_not_clobber_existing_hookspath(sandbox_git_global, tmp_pat
     assert exc.value.code == 1
     assert "already set" in capsys.readouterr().err
     assert _global_hookspath() == "/someone/else"  # untouched
+
+
+def test_install_requires_uv_managed_cli(sandbox_git_global, tmp_path, monkeypatch, capsys):
+    hooks_dir = tmp_path / "ghooks"
+    monkeypatch.setattr("shutil.which", lambda _name: None)
+    monkeypatch.setattr("sys.argv", ["install-commit-hook", "--dir", str(hooks_dir)])
+
+    with pytest.raises(SystemExit) as exc:
+        commit_hook.install_main()
+
+    assert exc.value.code == 1
+    assert "uv tool install gospelo-github-identity" in capsys.readouterr().err
+    assert not (hooks_dir / "_dispatch").exists()

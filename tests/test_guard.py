@@ -35,6 +35,7 @@ def _clear_skip_env():
     [
         ("git", ["push"], True),
         ("git", ["push", "origin", "main"], True),
+        ("git", ["commit", "-F", "message.txt"], True),
         ("git", ["-C", "/tmp/repo", "push"], True),      # value flag skipped
         ("git", ["status"], False),
         ("git", ["log", "--oneline"], False),
@@ -58,6 +59,25 @@ def _clear_skip_env():
 )
 def test_is_write_invocation(tool, argv, expected):
     assert guard.is_write_invocation(tool, argv) is expected
+
+
+@pytest.mark.parametrize(
+    "tool,argv,expected",
+    [
+        ("git", ["commit", "-F", "message.txt"], None),
+        ("git", ["commit", "--file=message.txt"], None),
+        ("git", ["commit", "-m", "message"], "-F/--file"),
+        ("git", ["commit"], "-F/--file"),
+        ("gh", ["pr", "create", "--body-file", "pr.md"], None),
+        ("gh", ["pr", "create", "--body-file=pr.md"], None),
+        ("gh", ["pr", "create", "--body", "message"], "--body-file"),
+        ("gh", ["pr", "create", "--fill"], "自動生成"),
+        ("gh", ["pr", "create"], "--body-file"),
+    ],
+)
+def test_comment_input_must_be_file(tool, argv, expected):
+    violation = guard.comment_input_violation(tool, argv)
+    assert (expected in violation) if expected else violation is None
 
 
 # ---------------------------------------------------------------------------
@@ -264,6 +284,25 @@ def test_install_guard_refuses_stale_build(monkeypatch, tmp_path, capsys):
     assert "does not support the 'guard' subcommand" in capsys.readouterr().err
 
 
+def test_install_guard_requires_uv_managed_cli(monkeypatch, tmp_path, capsys):
+    realbin = tmp_path / "realbin"
+    realbin.mkdir()
+    gh = realbin / "gh"
+    gh.write_text("#!/bin/sh\n")
+    gh.chmod(0o755)
+    monkeypatch.setenv("PATH", str(realbin))
+    monkeypatch.setattr("shutil.which", lambda _name: None)
+    shim_dir = tmp_path / "guardbin"
+    monkeypatch.setattr("sys.argv", ["install-guard", "--dir", str(shim_dir), "--tools", "gh"])
+
+    with pytest.raises(SystemExit) as exc:
+        guard.install_main()
+
+    assert exc.value.code == 1
+    assert "uv tool install gospelo-github-identity" in capsys.readouterr().err
+    assert not (shim_dir / "gh").exists()
+
+
 def test_guard_selftest_exits_zero(monkeypatch, capsys):
     monkeypatch.setattr("sys.argv", ["gospelo-github-identity guard", "--selftest"])
     guard.guard_main()  # returns normally (no SystemExit)
@@ -371,9 +410,9 @@ def test_enforce_repo_flag_wins_over_cwd(
     cwd.mkdir(parents=True)
     monkeypatch.chdir(cwd)
     _run_guard(monkeypatch, "gh", "/usr/bin/gh",
-               ["pr", "create", "--repo", "acme-corp/tool"])
+               ["pr", "create", "--repo", "acme-corp/tool", "--body-file", "pr.md"])
     assert captured_exec == [
-        ("/usr/bin/gh", ["/usr/bin/gh", "pr", "create", "--repo", "acme-corp/tool"])
+        ("/usr/bin/gh", ["/usr/bin/gh", "pr", "create", "--repo", "acme-corp/tool", "--body-file", "pr.md"])
     ]
     assert os.environ["GH_TOKEN"] == "tok-work"
     assert token_store == [("alice-work", "/usr/bin/gh")]  # real binary, not the shim
@@ -388,7 +427,7 @@ def test_enforce_unknown_owner_blocks(
     monkeypatch.chdir(cwd)
     with pytest.raises(SystemExit) as exc:
         _run_guard(monkeypatch, "gh", "/usr/bin/gh",
-                   ["pr", "create", "--repo", "stranger-org/tool"])
+                   ["pr", "create", "--repo", "stranger-org/tool", "--body-file", "pr.md"])
     assert exc.value.code == 1
     assert captured_exec == []
     err = capsys.readouterr().err
@@ -448,7 +487,7 @@ def test_enforce_missing_credential_blocks(
     monkeypatch.chdir(cwd)
     with pytest.raises(SystemExit) as exc:
         _run_guard(monkeypatch, "gh", "/usr/bin/gh",
-                   ["pr", "create", "--repo", "acme-corp/tool"])
+                   ["pr", "create", "--repo", "acme-corp/tool", "--body-file", "pr.md"])
     assert exc.value.code == 1
     assert captured_exec == []
     assert "no stored credential" in capsys.readouterr().err

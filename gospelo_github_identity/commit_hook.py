@@ -2,12 +2,15 @@
 # Copyright (c) 2026 NoStudio LLC. All rights reserved.
 # Licensed under the MIT License. See LICENSE.md for details.
 
-"""``commit-msg`` hook that strips ``Co-authored-by:`` trailers.
+"""``commit-msg`` hook that sanitizes AI-related traces from commit messages.
 
-Rationale: the human who runs the commit is the one accountable, and a
-co-author who cannot be contacted or take responsibility adds no value — so
-``Co-Authored-By`` trailers (e.g. AI co-author lines) are removed from every
-commit message.
+Two layers of protection:
+
+  1. **Strip** — ``Co-authored-by:`` and ``Claude-Session:`` trailer lines are
+     silently removed (the human who runs the commit is the one accountable).
+  2. **Block** — after stripping, the message is scanned for forbidden
+     AI-related words (Claude, Fable, Opus, Sonnet, Haiku, Anthropic). If any
+     remain the commit is **rejected** so no AI provenance leaks into history.
 
 Why a git hook rather than the ``gh``/``git`` PATH shim:
 
@@ -39,6 +42,17 @@ DEFAULT_HOOKS_DIR = "~/.gospelo-github-identity/git-hooks"
 # Match a ``Co-authored-by:`` trailer line (key is case-insensitive in git).
 _COAUTHOR_RE = re.compile(r"^[ \t]*co-authored-by[ \t]*:.*$", re.IGNORECASE)
 
+# Match a ``Claude-Session:`` trailer line (AI session URL trace).
+_AI_SESSION_RE = re.compile(r"^[ \t]*claude-session[ \t]*:.*$", re.IGNORECASE)
+
+_STRIP_PATTERNS = (_COAUTHOR_RE, _AI_SESSION_RE)
+
+# AI-related words that must not appear in a committed message.
+_FORBIDDEN_WORDS_RE = re.compile(
+    r"\b(?:Claude|Fable|Opus|Sonnet|Haiku|Anthropic)\b",
+    re.IGNORECASE,
+)
+
 # Standard client-side hook names. The dispatcher must exist for every hook the
 # user might rely on, otherwise setting core.hooksPath would silently DISABLE a
 # repo's own hooks of that type.
@@ -56,18 +70,24 @@ _GIT_HOOK_NAMES = (
 
 
 def strip_coauthored_by(text: str) -> str:
-    """Return ``text`` with every ``Co-authored-by:`` line removed.
+    """Return ``text`` with AI-trace trailer lines removed.
 
+    Removes ``Co-authored-by:`` and ``Claude-Session:`` lines.
     Trailing blank lines left behind by the removal are also trimmed. A single
     trailing newline is preserved when the message is non-empty.
     """
     lines = text.splitlines()
-    kept = [ln for ln in lines if not _COAUTHOR_RE.match(ln)]
+    kept = [ln for ln in lines if not any(p.match(ln) for p in _STRIP_PATTERNS)]
     while kept and kept[-1].strip() == "":
         kept.pop()
     if not kept:
         return ""
     return "\n".join(kept) + "\n"
+
+
+def find_forbidden_words(text: str) -> list[str]:
+    """Return distinct forbidden AI-related words found in ``text``."""
+    return sorted({m.group() for m in _FORBIDDEN_WORDS_RE.finditer(text)}, key=str.lower)
 
 
 def strip_main() -> None:
@@ -86,6 +106,18 @@ def strip_main() -> None:
     cleaned = strip_coauthored_by(original)
     if cleaned != original:
         path.write_text(cleaned, encoding="utf-8")
+
+    forbidden = find_forbidden_words(cleaned)
+    if forbidden:
+        words = ", ".join(forbidden)
+        print(
+            f"gospelo-github-identity strip-coauthors: BLOCKED — commit message "
+            f"contains forbidden AI-related words: {words}\n"
+            f"  Edit the message to remove these words and retry.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     sys.exit(0)
 
 
@@ -96,7 +128,13 @@ def strip_main() -> None:
 
 def _gospelo_github_identity_command() -> str:
     found = shutil.which("gospelo-github-identity")
-    return found if found else f"{sys.executable} -m gospelo_github_identity"
+    if found:
+        return found
+    raise RuntimeError(
+        "gospelo-github-identity is not installed on PATH. "
+        "Install it with `uv tool install gospelo-github-identity`, "
+        "then run install-commit-hook again. Direct Python execution is not supported."
+    )
 
 
 def _git_global(get_args: list[str]) -> subprocess.CompletedProcess:
@@ -108,7 +146,7 @@ def _dispatcher_body(gi_cmd: str) -> str:
     return (
         "#!/bin/sh\n"
         "# gospelo-github-identity global git-hooks dispatcher. Managed by gospelo-github-identity.\n"
-        '# Strips Co-Authored-By on commit-msg, then chains to the repo\'s own hook.\n'
+        '# Strips AI traces and blocks forbidden words on commit-msg, then chains to the repo\'s own hook.\n'
         'hook="$(basename "$0")"\n'
         f'if [ "$hook" = "commit-msg" ] && [ -n "$1" ]; then\n'
         f'  {gi_cmd} strip-coauthors "$1" || exit $?\n'
@@ -133,23 +171,6 @@ def install_main() -> None:
     args = parser.parse_args()
 
     hooks_dir = Path(args.dir).expanduser()
-    hooks_dir.mkdir(parents=True, exist_ok=True)
-
-    # Write the dispatcher and link every standard hook name to it.
-    dispatcher = hooks_dir / "_dispatch"
-    dispatcher.write_text(_dispatcher_body(_gospelo_github_identity_command()), encoding="utf-8")
-    dispatcher.chmod(dispatcher.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-    for name in _GIT_HOOK_NAMES:
-        link = hooks_dir / name
-        if link.exists() or link.is_symlink():
-            link.unlink()
-        try:
-            link.symlink_to(dispatcher.name)  # relative symlink to _dispatch
-        except OSError:
-            shutil.copyfile(dispatcher, link)
-            link.chmod(link.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-
-    # Set global core.hooksPath, without clobbering an unrelated existing value.
     current = _git_global(["--get", "core.hooksPath"]).stdout.strip()
     desired = str(hooks_dir)
     if current and current != desired and not args.force:
@@ -161,6 +182,32 @@ def install_main() -> None:
             file=sys.stderr,
         )
         sys.exit(1)
+
+    try:
+        gi_command = _gospelo_github_identity_command()
+    except RuntimeError as exc:
+        print(f"gospelo-github-identity install-commit-hook: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    hooks_dir.mkdir(parents=True, exist_ok=True)
+
+    # Write the dispatcher and link every standard hook name to it.
+    dispatcher = hooks_dir / "_dispatch"
+    dispatcher.write_text(_dispatcher_body(gi_command), encoding="utf-8")
+    dispatcher.chmod(dispatcher.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    for name in _GIT_HOOK_NAMES:
+        link = hooks_dir / name
+        if link.exists() or link.is_symlink():
+            link.unlink()
+        try:
+            link.symlink_to(dispatcher.name)  # relative symlink to _dispatch
+        except OSError:
+            shutil.copyfile(dispatcher, link)
+            link.chmod(link.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+
+    hooks_dir.mkdir(parents=True, exist_ok=True)
+
+    # Set global core.hooksPath after all validation succeeds.
     set_result = _git_global(["core.hooksPath", desired])
     if set_result.returncode != 0:
         print(f"ERROR: failed to set core.hooksPath: {set_result.stderr.strip()}", file=sys.stderr)
@@ -168,7 +215,8 @@ def install_main() -> None:
 
     print(f"Installed global commit-msg guard at: {hooks_dir}")
     print(f"  git config --global core.hooksPath = {desired}")
-    print("Every `git commit` now strips Co-Authored-By lines; existing repo hooks still run.")
+    print("Every `git commit` now strips AI traces (Co-Authored-By, Claude-Session)")
+    print("and blocks forbidden AI-related words (Claude, Fable, Opus, Sonnet, Haiku, Anthropic).")
     print("Note: repos that set their OWN core.hooksPath (e.g. husky) override this; install per-repo there.")
     print("Uninstall: gospelo-github-identity uninstall-commit-hook")
     sys.exit(0)

@@ -157,7 +157,7 @@ def _gh_api_is_write(argv: list[str]) -> bool:
 def is_write_invocation(tool: str, argv: list[str]) -> bool:
     """Return True if ``<tool> argv`` is a write / outward-facing operation."""
     if tool == "git":
-        return _git_subcommand(argv) == "push"
+        return _git_subcommand(argv) in {"commit", "push"}
     if tool == "gh":
         sub, action = _gh_sub_action(argv)
         if sub == "api":
@@ -165,6 +165,53 @@ def is_write_invocation(tool: str, argv: list[str]) -> bool:
         actions = _GH_WRITE_ACTIONS.get(sub or "")
         return actions is not None and action in actions
     return False
+
+
+def comment_input_violation(tool: str, argv: list[str]) -> str | None:
+    """Reject inline or automatically generated commit/PR comments."""
+    if tool == "git" and _git_subcommand(argv) == "commit":
+        has_file = False
+        i = 0
+        while i < len(argv):
+            arg = argv[i]
+            if arg in ("-F", "--file"):
+                has_file = i + 1 < len(argv) and argv[i + 1] != "-"
+                i += 2
+                continue
+            if arg.startswith("--file="):
+                has_file = arg.split("=", 1)[1] not in ("", "-")
+                i += 1
+                continue
+            if arg in ("-m", "--message") or arg.startswith("--message="):
+                return "git commit のメッセージは -F/--file によるファイル入力のみ許可します。"
+            i += 1
+        if not has_file:
+            return "git commit は -F/--file によるメッセージファイルを指定してください。"
+
+    if tool == "gh":
+        sub, action = _gh_sub_action(argv)
+        if sub == "pr" and action == "create":
+            has_body_file = False
+            i = 0
+            while i < len(argv):
+                arg = argv[i]
+                if arg == "--body-file":
+                    has_body_file = i + 1 < len(argv) and argv[i + 1] != "-"
+                    i += 2
+                    continue
+                if arg.startswith("--body-file="):
+                    has_body_file = arg.split("=", 1)[1] not in ("", "-")
+                    i += 1
+                    continue
+                if arg in ("-b", "--body") or arg.startswith("--body="):
+                    return "gh pr create の本文は --body-file によるファイル入力のみ許可します。"
+                if arg in ("--fill", "--fill-first", "--fill-verbose", "--editor"):
+                    return "gh pr create の本文自動生成は許可していません。--body-file を指定してください。"
+                i += 1
+            if not has_body_file:
+                return "gh pr create は --body-file による本文ファイルを指定してください。"
+
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -475,6 +522,11 @@ def guard_main() -> None:
         _exec_real(real, cmd_argv)
         return
 
+    violation = comment_input_violation(tool, cmd_argv)
+    if violation:
+        print(f"gospelo-github-identity guard: BLOCKED ({violation})", file=sys.stderr)
+        sys.exit(1)
+
     # Write command: gate it against the operation's target.
     try:
         config = load_config()
@@ -524,7 +576,11 @@ def _gospelo_github_identity_command() -> str:
     found = shutil.which("gospelo-github-identity")
     if found:
         return found
-    return f"{sys.executable} -m gospelo_github_identity"
+    raise RuntimeError(
+        "gospelo-github-identity is not installed on PATH. "
+        "Install it with `uv tool install gospelo-github-identity`, "
+        "then run install-guard again. Direct Python execution is not supported."
+    )
 
 
 def _command_supports_guard(command: str) -> bool:
@@ -565,7 +621,11 @@ def install_main() -> None:
     guard_dir = Path(args.dir).expanduser()
     guard_dir.mkdir(parents=True, exist_ok=True)
     tools = [t.strip() for t in args.tools.split(",") if t.strip()]
-    gi = _gospelo_github_identity_command()
+    try:
+        gi = _gospelo_github_identity_command()
+    except RuntimeError as exc:
+        print(f"gospelo-github-identity install-guard: {exc}", file=sys.stderr)
+        sys.exit(1)
 
     # Fail loudly now rather than baking a broken command into every shim. A
     # shim pointing at a build without the ``guard`` subcommand would make every
@@ -576,8 +636,8 @@ def install_main() -> None:
             f"gospelo-github-identity install-guard: the resolved command {gi!r} does "
             "not support the 'guard' subcommand (likely a stale install on "
             "PATH). Refusing to install broken shims.\n"
-            "  fix: reinstall the current build, e.g. `uv tool install --force "
-            ".` or `pip install -U gospelo-github-identity`, then re-run install-guard.",
+            "  fix: reinstall the current build with `uv tool install --force .`, "
+            "then re-run install-guard.",
             file=sys.stderr,
         )
         sys.exit(1)

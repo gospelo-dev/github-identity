@@ -55,6 +55,17 @@ On every write-to-remote operation, the agent verifies that the current working
 directory's expected profile matches what `git config` and `gh auth status`
 actually report.
 
+## Comment input policy
+
+Comments and commit messages must be supplied from files. Do not use inline or
+automatically generated text:
+
+- `git commit` requires `-F <file>` / `--file <file>`; `-m` / `--message` is forbidden.
+- `gh pr create` requires `--body-file <file>`; `--body`, `--fill`, and `--editor` are forbidden.
+
+If the required file input is missing, stop with an error instead of composing,
+rewriting, or appending attribution such as `Co-Authored-By` or `Copilot`.
+
 ## When to invoke
 
 Invoke this skill **before** executing any of the following operations:
@@ -169,7 +180,7 @@ Do not silently continue. Do not assume a default profile.
 
 ```bash
 # 1. Install the gospelo-github-identity CLI
-pip install gospelo-github-identity
+uv tool install gospelo-github-identity
 
 # 2. Create the config (interactive)
 gospelo-github-identity init

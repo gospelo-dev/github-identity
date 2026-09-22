@@ -57,7 +57,7 @@ Markdown, so it can also be used as a system prompt fragment for other agents.
 
 - `gospelo-github-identity` CLI installed and on `PATH`:
   ```bash
-  pip install gospelo-github-identity
+  uv tool install gospelo-github-identity
   ```
 - A configured `~/.config/gospelo-github-identity/config.yml` (see project root
   README for examples; or run `gospelo-github-identity init`)

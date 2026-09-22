@@ -30,7 +30,7 @@ Before Claude Code executes any of:
 Prerequisite: install the CLI.
 
 ```bash
-pip install gospelo-github-identity
+uv tool install gospelo-github-identity
 gospelo-github-identity init   # create ~/.config/gospelo-github-identity/config.yml
 ```
 

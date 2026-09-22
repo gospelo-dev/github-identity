@@ -40,6 +40,7 @@ profiles:
       - <glob>
 
 default_profile: <profile-name> # 任意
+active_profile: <profile-name>  # 任意。同一パスで手動選択する profile
 ```
 
 スキーマにないキーはエラーにならず**黙って無視**されます。タイポに気づきにくいため、書いた設定が意図どおり効いているかは `list` / `detect` / `check` で確認してください。
@@ -111,6 +112,10 @@ gh:
 
 **省略時、未マッチは「未マッチ」のままです** (自動フォールバックはしません)。`detect` / `check` / `doctor` は exit 1 になり、`guard` はそのディレクトリを統治対象外として素通しします。
 
+### active_profile (任意)
+
+手動で選択した profile 名です。この profile の `paths` が現在のディレクトリにマッチする場合、他のマッチ候補より優先されます。`switch <profile>` は Git と `gh` の切替成功後にこの値を更新するため、同じディレクトリツリーを共有する複数アカウントを明示的に選択できます。`profiles` に存在する名前でなければなりません。
+
 ## glob 仕様
 
 ### 構文
@@ -138,8 +143,9 @@ paths:
 
 1. cwd は `Path.resolve()` で絶対化されます (symlink も解決)。
 2. 全 profile の全 `paths` を評価し、マッチしたものすべてを候補にします。
-3. 複数 profile がマッチした場合、**literal prefix が最長の pattern** を含む profile が選ばれます。literal prefix とは pattern 先頭から最初の glob メタ文字 (`*` / `?` / `[`) までの部分です。
-4. どれにもマッチしなければ `default_profile` (設定時のみ)。
+3. `active_profile` がマッチ候補に含まれる場合、それが選ばれます。
+4. それ以外で複数 profile がマッチした場合、**literal prefix が最長の pattern** を含む profile が選ばれます。literal prefix とは pattern 先頭から最初の glob メタ文字 (`*` / `?` / `[`) までの部分です。
+5. どれにもマッチしなければ `default_profile` (設定時のみ)。
 
 ネスト構成の例:
 

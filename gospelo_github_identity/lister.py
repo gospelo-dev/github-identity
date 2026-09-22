@@ -57,6 +57,8 @@ def main() -> None:
 
     if config.default_profile:
         print(f"\nDefault profile: {config.default_profile}")
+    if config.active_profile:
+        print(f"Active profile: {config.active_profile}")
     sys.exit(0)
 
 

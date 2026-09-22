@@ -85,6 +85,20 @@ def test_list_one_path_label_singular(
     assert "1 paths" not in out
 
 
+def test_list_shows_active_profile(isolated_config, monkeypatch, capsys):
+    from gospelo_github_identity import lister
+
+    config_text = isolated_config.read_text(encoding="utf-8")
+    isolated_config.write_text(config_text + "active_profile: work\n", encoding="utf-8")
+    monkeypatch.setattr("sys.argv", ["list"])
+
+    with pytest.raises(SystemExit) as exc:
+        lister.main()
+
+    assert exc.value.code == 0
+    assert "Active profile: work" in capsys.readouterr().out
+
+
 def test_list_multiple_paths_label_plural(
     isolated_config: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -16,6 +16,7 @@ helpful message.
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -69,6 +70,9 @@ class Config:
     profiles: dict[str, Profile]
     default_profile: str | None
     source_path: Path
+    # A manually selected profile wins when it also matches the current path.
+    # This lets users select between identities that intentionally share paths.
+    active_profile: str | None = None
 
     def get_profile(self, name: str) -> Profile:
         """Return a profile by name, or raise ``ConfigError``."""
@@ -180,23 +184,32 @@ def _parse_config(raw: dict[str, Any], source_path: Path) -> Config:
             owner_seen[key] = name
 
     default_profile = raw.get("default_profile")
-    if default_profile is not None:
-        if not isinstance(default_profile, str):
-            raise ConfigError(
-                f"{source_path}: 'default_profile' must be a string"
-            )
-        if default_profile not in profiles:
-            raise ConfigError(
-                f"{source_path}: 'default_profile' references unknown "
-                f"profile {default_profile!r}"
-            )
+    _validate_profile_reference("default_profile", default_profile, profiles, source_path)
+
+    active_profile = raw.get("active_profile")
+    _validate_profile_reference("active_profile", active_profile, profiles, source_path)
 
     return Config(
         version=str(version),
         profiles=profiles,
         default_profile=default_profile,
         source_path=source_path,
+        active_profile=active_profile,
     )
+
+
+def _validate_profile_reference(
+    key: str, value: Any, profiles: dict[str, Profile], source_path: Path
+) -> None:
+    """Ensure an optional top-level profile reference names a declared profile."""
+    if value is None:
+        return
+    if not isinstance(value, str):
+        raise ConfigError(f"{source_path}: '{key}' must be a string")
+    if value not in profiles:
+        raise ConfigError(
+            f"{source_path}: '{key}' references unknown profile {value!r}"
+        )
 
 
 def _parse_profile(name: str, body: Any, source_path: Path) -> Profile:
@@ -360,6 +373,8 @@ def save_config(config: Config, path: Path | None = None) -> Path:
         payload["profiles"][name] = entry
     if config.default_profile is not None:
         payload["default_profile"] = config.default_profile
+    if config.active_profile is not None:
+        payload["active_profile"] = config.active_profile
 
     text = yaml.safe_dump(
         payload,
@@ -374,3 +389,18 @@ def save_config(config: Config, path: Path | None = None) -> Path:
         # Best-effort: fail open on filesystems that do not support chmod.
         pass
     return target
+
+
+def set_active_profile(config: Config, name: str) -> None:
+    """Persist a selected profile without rewriting the user's YAML comments."""
+    config.get_profile(name)
+    line = f"active_profile: {name}\n"
+    text = config.source_path.read_text(encoding="utf-8")
+    if re.search(r"(?m)^active_profile:[^\n]*(?:\n|$)", text):
+        text = re.sub(r"(?m)^active_profile:[^\n]*(?:\n|$)", line, text)
+    else:
+        if text and not text.endswith("\n"):
+            text += "\n"
+        text += line
+    config.source_path.write_text(text, encoding="utf-8")
+    config.active_profile = name

@@ -56,11 +56,13 @@ def resolve_profile(config: Config, cwd: Path) -> MatchResult:
          ``/private/var/...``, or a ``~`` through a symlinked home) still
          matches. The unresolved-absolute forms are also compared as a fallback
          for paths that do not exist on disk.
-      3. If multiple profiles match, the one with the longest **literal
-         prefix** (the part before the first glob metacharacter) wins. This
-         keeps nested directories like ``~/projects/work/oss-fork/**``
-         beating a broader ``~/projects/work/**``.
-      4. If nothing matches, fall back to ``default_profile`` if set;
+       3. When ``active_profile`` also matches, it wins. This makes a manual
+          selection deterministic for profiles intentionally sharing paths.
+       4. Otherwise, the one with the longest **literal prefix** (the part
+          before the first glob metacharacter) wins. This keeps nested
+          directories like ``~/projects/work/oss-fork/**`` beating a broader
+          ``~/projects/work/**``.
+       5. If nothing matches, fall back to ``default_profile`` if set;
          otherwise return an empty result.
     """
     cwd_real = _safe_resolve(cwd)
@@ -78,6 +80,12 @@ def resolve_profile(config: Config, cwd: Path) -> MatchResult:
                 candidates.append((prefix_len, profile, raw_pattern))
 
     if candidates:
+        if config.active_profile is not None:
+            for _prefix_len, profile, pattern in candidates:
+                if profile.name == config.active_profile:
+                    return MatchResult(
+                        profile=profile, matched_pattern=pattern, via_default=False
+                    )
         # Longest literal prefix wins; ties broken by insertion order.
         candidates.sort(key=lambda item: item[0], reverse=True)
         best = candidates[0]

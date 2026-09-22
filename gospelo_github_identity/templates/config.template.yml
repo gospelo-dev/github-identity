@@ -57,3 +57,7 @@ profiles:
 # パスマッチに該当しない場合のフォールバック (任意)
 # 設定しない場合、マッチしないディレクトリでは "no profile matched" になる
 default_profile: personal
+
+# (任意) 同じ paths に複数 profile がマッチするときの手動選択。
+# `gospelo-github-identity switch <profile>` がこの値を更新する。
+# active_profile: personal

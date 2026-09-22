@@ -44,6 +44,7 @@ def test_switch_local_runs_git_and_gh(
     assert ("user.email", "local") in keys
     # gh switch must have been called with the profile's account.
     assert mock_external["switch_calls"] == ["alice-personal"]
+    assert "active_profile: personal" in isolated_config.read_text(encoding="utf-8")
 
 
 def test_switch_global_uses_global_scope(

@@ -38,12 +38,15 @@ def _profile(name: str, paths: list[str]) -> Profile:
     )
 
 
-def _config(profiles: list[Profile], default: str | None = None) -> Config:
+def _config(
+    profiles: list[Profile], default: str | None = None, active: str | None = None
+) -> Config:
     return Config(
         version="1",
         profiles={p.name: p for p in profiles},
         default_profile=default,
         source_path=Path("/tmp/fake-config.yml"),
+        active_profile=active,
     )
 
 
@@ -184,6 +187,17 @@ def test_longest_literal_prefix_wins(tmp_home: Path) -> None:
     assert result.profile.name == "oss-fork", (
         "more specific path with longer literal prefix must win"
     )
+
+
+def test_active_profile_wins_when_paths_overlap(tmp_home: Path) -> None:
+    target = tmp_home / "projects" / "shared" / "repo"
+    target.mkdir(parents=True)
+    first = _profile("first", ["~/projects/shared/**"])
+    selected = _profile("selected", ["~/projects/shared/**"])
+
+    result = resolve_profile(_config([first, selected], active="selected"), target)
+
+    assert result.profile is selected
 
 
 def test_no_match_falls_back_to_default(tmp_home: Path) -> None:

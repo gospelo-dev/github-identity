@@ -24,6 +24,7 @@ from gospelo_github_identity.config import (
     load_config,
     resolve_config_path,
     save_config,
+    set_active_profile,
 )
 
 
@@ -37,6 +38,7 @@ def test_load_config_reads_valid_yaml(valid_config_file: Path) -> None:
     assert cfg.version == "1", "version must be parsed as the string '1'"
     assert set(cfg.profiles) == {"personal", "work"}
     assert cfg.default_profile == "personal"
+    assert cfg.active_profile is None
     assert cfg.source_path == valid_config_file
 
 
@@ -56,6 +58,35 @@ def test_load_config_minimal_no_default(minimal_config_file: Path) -> None:
         "default_profile must be None when omitted (no silent fallback)"
     )
     assert list(cfg.profiles) == ["solo"]
+
+
+def test_load_config_reads_active_profile(write_config) -> None:
+    config_file = write_config(
+        """version: \"1\"
+profiles:
+  p:
+    git: {user.name: a, user.email: a@example.com}
+    gh: {account: a}
+    paths: []
+active_profile: p
+"""
+    )
+    assert load_config(config_file).active_profile == "p"
+
+
+def test_set_active_profile_preserves_comments(valid_config_file: Path) -> None:
+    config = load_config(valid_config_file)
+    valid_config_file.write_text(
+        "# keep this comment\n" + valid_config_file.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+
+    set_active_profile(config, "work")
+
+    text = valid_config_file.read_text(encoding="utf-8")
+    assert text.startswith("# keep this comment\n")
+    assert "active_profile: work\n" in text
+    assert config.active_profile == "work"
 
 
 # ---------------------------------------------------------------------------

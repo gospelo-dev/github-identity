@@ -22,7 +22,7 @@ import sys
 from pathlib import Path
 
 from . import _external
-from .config import ConfigError, load_config
+from .config import ConfigError, load_config, set_active_profile
 
 
 def main() -> None:
@@ -90,6 +90,7 @@ def main() -> None:
 
     git_ok = True
     gh_ok = True
+    selection_ok = True
 
     try:
         _external.git_set_config("user.name", profile.git_user_name, scope=scope, cwd=cwd)
@@ -136,6 +137,15 @@ def main() -> None:
             )
 
     if git_ok and gh_ok:
+        try:
+            set_active_profile(config, profile.name)
+        except OSError as exc:
+            selection_ok = False
+            print(f"NG: could not save active profile: {exc}", file=sys.stderr)
+        else:
+            print(f"OK: active profile set to {profile.name}." )
+
+    if git_ok and gh_ok and selection_ok:
         sys.exit(0)
     if not git_ok and not gh_ok:
         sys.exit(2)

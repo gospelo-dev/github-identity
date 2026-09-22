@@ -40,6 +40,7 @@ profiles:
       - <glob>
 
 default_profile: <profile-name> # optional
+active_profile: <profile-name>  # optional; manually selected matching profile
 ```
 
 Keys not in the schema are **silently ignored** rather than rejected — a typo will not error. Verify that the config behaves as intended with `list` / `detect` / `check`.
@@ -111,6 +112,13 @@ Fallback profile for directories that match no profile's `paths`. Must name an e
 
 **When omitted, unmatched stays unmatched** — there is no automatic fallback. `detect` / `check` / `doctor` exit 1, and the `guard` treats the directory as ungoverned and passes commands through.
 
+### active_profile (optional)
+
+The manually selected profile. When it has a `paths` pattern matching the
+current directory, it wins over other matching profiles. `switch <profile>`
+updates this value after switching Git and `gh`, allowing accounts that share a
+directory tree to be selected explicitly. It must name an existing profile.
+
 ## Glob semantics
 
 ### Syntax
@@ -138,8 +146,9 @@ paths:
 
 1. The cwd is absolutized with `Path.resolve()` (symlinks resolved).
 2. Every pattern of every profile is evaluated; all matches become candidates.
-3. When several profiles match, the profile containing the pattern with the **longest literal prefix** wins. The literal prefix is the part of the pattern before its first glob metacharacter (`*` / `?` / `[`).
-4. When nothing matches, `default_profile` applies (if set).
+3. When `active_profile` is among the matches, it wins.
+4. Otherwise, the profile containing the pattern with the **longest literal prefix** wins. The literal prefix is the part of the pattern before its first glob metacharacter (`*` / `?` / `[`).
+5. When nothing matches, `default_profile` applies (if set).
 
 Nested-tree example:
 

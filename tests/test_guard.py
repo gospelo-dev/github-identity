@@ -64,12 +64,8 @@ def test_is_write_invocation(tool, argv, expected):
 @pytest.mark.parametrize(
     "tool,argv,expected",
     [
-        ("git", ["commit", "-F", "message.txt"], None),
-        ("git", ["commit", "--file=message.txt"], None),
         ("git", ["commit", "-m", "message"], "-F/--file"),
         ("git", ["commit"], "-F/--file"),
-        ("gh", ["pr", "create", "--body-file", "pr.md"], None),
-        ("gh", ["pr", "create", "--body-file=pr.md"], None),
         ("gh", ["pr", "create", "--body", "message"], "--body-file"),
         ("gh", ["pr", "create", "--fill"], "自動生成"),
         ("gh", ["pr", "create"], "--body-file"),
@@ -78,6 +74,72 @@ def test_is_write_invocation(tool, argv, expected):
 def test_comment_input_must_be_file(tool, argv, expected):
     violation = guard.comment_input_violation(tool, argv)
     assert (expected in violation) if expected else violation is None
+
+
+def test_pr_body_file_rejects_ai_attribution(tmp_path):
+    body_file = tmp_path / "pr-body.md"
+    body_file.write_text("Generated with Claude Code\n", encoding="utf-8")
+
+    violation = guard.comment_input_violation(
+        "gh", ["pr", "create", "--body-file", str(body_file)]
+    )
+
+    assert violation is not None
+    assert "Claude" in violation
+
+
+@pytest.mark.parametrize("flag", ["-F", "--file="])
+def test_commit_message_file_allows_clean_content(tmp_path, flag):
+    message_file = tmp_path / "message.txt"
+    message_file.write_text("feat: clean message\n", encoding="utf-8")
+    argv = ["commit", flag, str(message_file)] if flag == "-F" else [
+        "commit", f"{flag}{message_file}"
+    ]
+    assert guard.comment_input_violation("git", argv) is None
+
+
+@pytest.mark.parametrize(
+    "message", [
+        "Co-Authored-By: Any Contributor <contributor@example.com>\n",
+        "Claude-Session: https://claude.ai/code/session_123\n",
+    ],
+)
+def test_commit_message_file_rejects_ai_trailers(tmp_path, message):
+    message_file = tmp_path / "message.txt"
+    message_file.write_text(message, encoding="utf-8")
+
+    violation = guard.comment_input_violation(
+        "git", ["commit", "-F", str(message_file)]
+    )
+
+    assert violation is not None
+
+
+@pytest.mark.parametrize(
+    "body", [
+        "Co-Authored-By: Any Contributor <contributor@example.com>\n",
+        "Claude-Session: https://claude.ai/code/session_123\n",
+    ],
+)
+def test_pr_body_file_rejects_ai_trailers(tmp_path, body):
+    body_file = tmp_path / "pr-body.md"
+    body_file.write_text(body, encoding="utf-8")
+
+    violation = guard.comment_input_violation(
+        "gh", ["pr", "create", "--body-file", str(body_file)]
+    )
+
+    assert violation is not None
+
+
+@pytest.mark.parametrize("flag", ["--body-file", "--body-file="])
+def test_pr_body_file_allows_clean_content(tmp_path, flag):
+    body_file = tmp_path / "pr-body.md"
+    body_file.write_text("# Summary\n", encoding="utf-8")
+    argv = ["pr", "create", flag, str(body_file)] if flag == "--body-file" else [
+        "pr", "create", f"{flag}{body_file}"
+    ]
+    assert guard.comment_input_violation("gh", argv) is None
 
 
 # ---------------------------------------------------------------------------
@@ -118,6 +180,7 @@ def test_write_blocked_on_mismatch(
     """gh write under the matched profile, wrong gh account -> exit 1, no exec."""
     target = tmp_home / "projects" / "personal" / "repo"
     target.mkdir(parents=True)
+    (target / "pr.md").write_text("# Summary\n", encoding="utf-8")
     monkeypatch.chdir(target)
     mock_external["gh_login"] = "someone-else"   # expected: alice-personal
     with pytest.raises(SystemExit) as exc:
@@ -408,6 +471,7 @@ def test_enforce_repo_flag_wins_over_cwd(
     identity: the target owner outranks the working directory."""
     cwd = tmp_home / "projects" / "personal" / "repo"
     cwd.mkdir(parents=True)
+    (cwd / "pr.md").write_text("# Summary\n", encoding="utf-8")
     monkeypatch.chdir(cwd)
     _run_guard(monkeypatch, "gh", "/usr/bin/gh",
                ["pr", "create", "--repo", "acme-corp/tool", "--body-file", "pr.md"])
@@ -424,6 +488,7 @@ def test_enforce_unknown_owner_blocks(
 ):
     cwd = tmp_home / "projects" / "personal" / "repo"
     cwd.mkdir(parents=True)
+    (cwd / "pr.md").write_text("# Summary\n", encoding="utf-8")
     monkeypatch.chdir(cwd)
     with pytest.raises(SystemExit) as exc:
         _run_guard(monkeypatch, "gh", "/usr/bin/gh",
@@ -484,6 +549,7 @@ def test_enforce_missing_credential_blocks(
     monkeypatch.delenv("GH_TOKEN", raising=False)
     cwd = tmp_home / "projects" / "personal" / "repo"
     cwd.mkdir(parents=True)
+    (cwd / "pr.md").write_text("# Summary\n", encoding="utf-8")
     monkeypatch.chdir(cwd)
     with pytest.raises(SystemExit) as exc:
         _run_guard(monkeypatch, "gh", "/usr/bin/gh",

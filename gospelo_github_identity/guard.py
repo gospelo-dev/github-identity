@@ -65,6 +65,13 @@ QUIET_ENV = "GOSPELO_GITHUB_IDENTITY_QUIET"
 DEFAULT_GUARD_DIR = "~/.gospelo-github-identity/bin"
 SUPPORTED_TOOLS = ("gh", "git")
 
+_FORBIDDEN_COMMENT_WORDS_RE = re.compile(
+    r"\b(?:Claude|Copilot|Fable|Opus|Sonnet|Haiku|Anthropic)\b", re.IGNORECASE
+)
+_FORBIDDEN_COMMENT_TRAILERS_RE = re.compile(
+    r"(?mi)^[ \t]*(?:co-authored-by|claude-session)[ \t]*:"
+)
+
 
 def _truthy_env(name: str) -> bool:
     return os.environ.get(name, "").strip() not in ("", "0", "false", "False")
@@ -168,18 +175,21 @@ def is_write_invocation(tool: str, argv: list[str]) -> bool:
 
 
 def comment_input_violation(tool: str, argv: list[str]) -> str | None:
-    """Reject inline or automatically generated commit/PR comments."""
+    """Reject inline, generated, or AI-attributed commit/PR comments."""
     if tool == "git" and _git_subcommand(argv) == "commit":
         has_file = False
+        message_file: str | None = None
         i = 0
         while i < len(argv):
             arg = argv[i]
             if arg in ("-F", "--file"):
                 has_file = i + 1 < len(argv) and argv[i + 1] != "-"
+                message_file = argv[i + 1] if has_file else None
                 i += 2
                 continue
             if arg.startswith("--file="):
                 has_file = arg.split("=", 1)[1] not in ("", "-")
+                message_file = arg.split("=", 1)[1] if has_file else None
                 i += 1
                 continue
             if arg in ("-m", "--message") or arg.startswith("--message="):
@@ -187,20 +197,38 @@ def comment_input_violation(tool: str, argv: list[str]) -> str | None:
             i += 1
         if not has_file:
             return "git commit は -F/--file によるメッセージファイルを指定してください。"
+        try:
+            message = Path(message_file).read_text(encoding="utf-8")
+        except OSError as exc:
+            return f"git commit のメッセージファイルを検証できません: {exc}"
+        if _FORBIDDEN_COMMENT_TRAILERS_RE.search(message):
+            return (
+                "git commit のメッセージファイルに Co-Authored-By または "
+                "Claude-Session を含めることはできません。"
+            )
+        forbidden = sorted({m.group() for m in _FORBIDDEN_COMMENT_WORDS_RE.finditer(message)})
+        if forbidden:
+            return (
+                "git commit のメッセージファイルに禁止されたAI帰属が含まれています: "
+                f"{', '.join(forbidden)}"
+            )
 
     if tool == "gh":
         sub, action = _gh_sub_action(argv)
         if sub == "pr" and action == "create":
             has_body_file = False
+            body_file: str | None = None
             i = 0
             while i < len(argv):
                 arg = argv[i]
                 if arg == "--body-file":
                     has_body_file = i + 1 < len(argv) and argv[i + 1] != "-"
+                    body_file = argv[i + 1] if has_body_file else None
                     i += 2
                     continue
                 if arg.startswith("--body-file="):
                     has_body_file = arg.split("=", 1)[1] not in ("", "-")
+                    body_file = arg.split("=", 1)[1] if has_body_file else None
                     i += 1
                     continue
                 if arg in ("-b", "--body") or arg.startswith("--body="):
@@ -210,6 +238,21 @@ def comment_input_violation(tool: str, argv: list[str]) -> str | None:
                 i += 1
             if not has_body_file:
                 return "gh pr create は --body-file による本文ファイルを指定してください。"
+            try:
+                body = Path(body_file).read_text(encoding="utf-8")
+            except OSError as exc:
+                return f"gh pr create の本文ファイルを検証できません: {exc}"
+            forbidden = sorted({m.group() for m in _FORBIDDEN_COMMENT_WORDS_RE.finditer(body)})
+            if forbidden:
+                return (
+                    "gh pr create の本文ファイルに禁止されたAI帰属が含まれています: "
+                    f"{', '.join(forbidden)}"
+                )
+            if _FORBIDDEN_COMMENT_TRAILERS_RE.search(body):
+                return (
+                    "gh pr create の本文ファイルに Co-Authored-By または "
+                    "Claude-Session を含めることはできません。"
+                )
 
     return None
 

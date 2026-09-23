@@ -125,7 +125,7 @@ gh --repo <owner>/<repo> repo view   # owner に対応する profile のトー�
 
 ### 任意: Gitコミットフック
 
-コミットメッセージから `Co-Authored-By` 行を自動的に除去する場合は、グローバルGitフックをインストールします。CLIは `uv tool` でインストールしたものを使用してください。
+コミットメッセージから `Co-Authored-By` と `Claude-Session` を除去し、内容確認のためリトライを求める場合は、グローバルGitフックをインストールします。CLIは `uv tool` でインストールしたものを使用してください。
 
 ```bash
 gospelo-github-identity install-commit-hook
@@ -152,7 +152,7 @@ gospelo-github-identity uninstall-commit-hook
 | `switch <profile>` | 指定 profile の git config を手動適用する一発コマンド |
 | `prompt` | シェルプロンプト統合用 helper (`--format=ps1` / `plain` / `color`) |
 | `install-guard` / `uninstall-guard` | `gh` / `git` を PATH シムでシャドウし、対象 repo 基準の identity を強制 |
-| `install-commit-hook` / `uninstall-commit-hook` | `Co-Authored-By` を除去するグローバル `commit-msg` フック |
+| `install-commit-hook` / `uninstall-commit-hook` | 禁止トレーラを除去してリトライを求めるグローバル `commit-msg` フック |
 
 詳細は [CLI リファレンス](https://github.com/gospelo-dev/github-identity/blob/main/docs/manual/ja/cli-reference.md) を参照。
 

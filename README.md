@@ -125,7 +125,7 @@ No agent-side configuration is needed (the PATH shim intercepts every `gh` / `gi
 
 ### Optional: Git commit hook
 
-To automatically remove `Co-Authored-By` trailers from commit messages, install the global Git hook. Use the CLI installed through `uv tool`.
+To remove `Co-Authored-By` and `Claude-Session` trailers from commit messages, then require an explicit retry, install the global Git hook. Use the CLI installed through `uv tool`.
 
 ```bash
 gospelo-github-identity install-commit-hook
@@ -152,7 +152,7 @@ This uses Git's `core.hooksPath`. A repository-specific `core.hooksPath` (for ex
 | `switch <profile>` | One-shot manual application of a profile's git config |
 | `prompt` | Shell-prompt integration helper (`--format=ps1` / `plain` / `color`) |
 | `install-guard` / `uninstall-guard` | Shadow `gh` / `git` with PATH shims that enforce target-repo-based identity |
-| `install-commit-hook` / `uninstall-commit-hook` | Global `commit-msg` hook that strips `Co-Authored-By` trailers |
+| `install-commit-hook` / `uninstall-commit-hook` | Global `commit-msg` hook that removes prohibited trailers, then requires a retry |
 
 See the [CLI reference](https://github.com/gospelo-dev/github-identity/blob/main/docs/manual/en/cli-reference.md) for details.
 

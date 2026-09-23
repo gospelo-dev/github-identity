@@ -3,7 +3,7 @@
 `check` / `doctor` は人間が読む前提の照合ですが、このページの 2 つの仕組みは**人間が見ていなくても**効きます。AI エージェントの自律実行を主なターゲットにした層です ([agents.md](agents.md) 参照)。
 
 - **guard** — `gh` / `git` を PATH シムでシャドウし、書き込みの**操作対象**から identity を解決して強制する
-- **commit-msg フック** — 全コミットメッセージから `Co-Authored-By` トレーラを除去
+- **commit-msg フック** — 禁止トレーラを除去してからブロックし、リトライを要求
 
 ## guard (gh / git の PATH シム)
 
@@ -183,7 +183,7 @@ gospelo-github-identity uninstall-guard
 
 ## commit-msg フック (Co-Authored-By 除去)
 
-コミットを実行した人間が責任を負う著者である、という方針のもと、`Co-authored-by:` トレーラ (AI の co-author 行など) を全コミットメッセージから除去します。
+コミットを実行した人間が責任を負う著者である、という方針のもと、すべての `Co-authored-by:` と `Claude-Session:` トレーラをメッセージから除去してからコミットを拒否します。除去済みのメッセージファイルは残るため、内容を確認してリトライすれば完了できます。不要な帰属を履歴に残さず、追記された事実にも気づけます。
 
 PATH シムではなく git フックで実装しているのは:
 
@@ -197,7 +197,7 @@ PATH シムではなく git フックで実装しているのは:
 gospelo-github-identity install-commit-hook [--dir DIR] [--force]
 ```
 
-`--dir` (既定: `~/.gospelo-github-identity/git-hooks`) にディスパッチャを設置し、global `core.hooksPath` をそこへ向けます。ディスパッチャは `Co-Authored-By` を除去した後、**各リポジトリ自身の `.git/hooks/<name>` にチェーン**するため、husky / pre-commit などの既存フックは動き続けます。
+`--dir` (既定: `~/.gospelo-github-identity/git-hooks`) にディスパッチャを設置し、global `core.hooksPath` をそこへ向けます。メッセージが検証を通過した後、ディスパッチャは**各リポジトリ自身の `.git/hooks/<name>` にチェーン**するため、husky / pre-commit などの既存フックは動き続けます。
 
 注意点:
 
@@ -218,4 +218,4 @@ global `core.hooksPath` が自分のディスパッチャを指している場�
 gospelo-github-identity strip-coauthors <commit-msg-file>
 ```
 
-フックが呼び出すワーカーです。メッセージファイルをその場で書き換えて `Co-authored-by:` 行を除去します。通常は直接実行しません。**常に exit 0** — 自身の I/O エラーでコミットをブロックしません。
+フックが呼び出すワーカーです。禁止トレーラをメッセージファイルから除去し、利用者が気づいてリトライできるよう exit 1 を返します。自身の I/O エラー時だけは commit を止めず exit 0 です。

@@ -14,7 +14,7 @@ Specification of all 13 subcommands. For how the enforcement layer works (guard 
 | `1` | Expected condition not met (mismatch, no matching profile, blocked write — anticipated failures) |
 | `2` | Tool error (missing config, malformed YAML, external tool failure, ...) |
 
-The exceptions are `prompt` (always exit 0, so it never breaks a shell) and `strip-coauthors` (always exit 0, so it never blocks a commit).
+`prompt` always exits 0 so it never breaks a shell. `strip-coauthors` exits 1 after removing prohibited trailers, so the user notices and retries with the cleaned message; its own I/O errors still exit 0.
 
 ```
 gospelo-github-identity --help        # list subcommands
@@ -214,7 +214,7 @@ gospelo-github-identity uninstall-commit-hook [--dir DIR]
 gospelo-github-identity strip-coauthors <commit-msg-file>
 ```
 
-A global `commit-msg` hook that strips `Co-authored-by:` trailers from every commit message. `strip-coauthors` is the worker the hook invokes; you normally never run it by hand (always exit 0 — its own I/O errors never block a commit).
+A global `commit-msg` hook that removes `Co-authored-by:` and `Claude-Session:` trailers, then blocks the commit so the user can review and retry the cleaned message. `strip-coauthors` is the worker the hook invokes; you normally never run it by hand.
 
 - `install-commit-hook --dir` — hooks directory (default: `~/.gospelo-github-identity/git-hooks`)
 - `install-commit-hook --force` — overwrite a pre-existing global `core.hooksPath` that points elsewhere

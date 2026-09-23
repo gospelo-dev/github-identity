@@ -14,7 +14,7 @@
 | `1` | 期待条件未達 (不一致・該当 profile なし・ブロック等の予期される失敗) |
 | `2` | ツールエラー (config 不在・不正な YAML・外部ツール失敗等) |
 
-例外は `prompt` (シェルを止めないため常に exit 0) と `strip-coauthors` (コミットを止めないため常に exit 0) です。
+`prompt` はシェルを止めないため常に exit 0 です。`strip-coauthors` は禁止トレーラの除去後に exit 1 となり、利用者に内容確認とリトライを求めます。ただし自身の I/O エラー時は exit 0 です。
 
 ```
 gospelo-github-identity --help        # サブコマンド一覧
@@ -214,7 +214,7 @@ gospelo-github-identity uninstall-commit-hook [--dir DIR]
 gospelo-github-identity strip-coauthors <commit-msg-file>
 ```
 
-グローバル `commit-msg` フックとして、全コミットメッセージから `Co-authored-by:` トレーラを除去します。`strip-coauthors` はフックが呼ぶワーカーで、通常は直接実行しません (常に exit 0 — 自身の I/O エラーでコミットを止めません)。
+グローバル `commit-msg` フックとして、全コミットメッセージから `Co-authored-by:` と `Claude-Session:` トレーラを除去してからコミットをブロックします。`strip-coauthors` はフックが呼ぶワーカーで、通常は直接実行しません。
 
 - `install-commit-hook --dir` — フック設置先 (既定: `~/.gospelo-github-identity/git-hooks`)
 - `install-commit-hook --force` — 別値の global `core.hooksPath` が既設でも上書き

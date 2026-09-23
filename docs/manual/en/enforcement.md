@@ -3,7 +3,7 @@
 `check` and `doctor` assume a human reads their output. The two mechanisms on this page work **while nobody is watching** — the layer aimed at autonomous AI agents (see [agents.md](agents.md)).
 
 - **guard** — shadows `gh` / `git` with PATH shims and enforces identity resolved from the **target of the operation**
-- **commit-msg hook** — strips `Co-Authored-By` trailers from every commit message
+- **commit-msg hook** — removes prohibited trailers, then blocks so the user retries knowingly
 
 ## The guard (PATH shims for gh / git)
 
@@ -183,7 +183,7 @@ Removes the shim files. Delete the `export PATH=...` line from your shell rc you
 
 ## The commit-msg hook (stripping Co-Authored-By)
 
-On the principle that the human who runs the commit is the accountable author, the hook removes `Co-authored-by:` trailers (e.g. AI co-author lines) from every commit message.
+On the principle that the human who runs the commit is the accountable author, the hook removes every `Co-authored-by:` and `Claude-Session:` trailer, then rejects the commit. The cleaned message file remains in place; review it and retry to complete the commit. This makes an unwanted attribution visible without allowing it into history.
 
 It is a git hook rather than a PATH shim because:
 
@@ -197,7 +197,7 @@ It is a git hook rather than a PATH shim because:
 gospelo-github-identity install-commit-hook [--dir DIR] [--force]
 ```
 
-Installs a dispatcher into `--dir` (default: `~/.gospelo-github-identity/git-hooks`) and points the global `core.hooksPath` at it. After stripping `Co-Authored-By`, the dispatcher **chains to each repository's own `.git/hooks/<name>`**, so existing hooks (husky, pre-commit, ...) keep working.
+Installs a dispatcher into `--dir` (default: `~/.gospelo-github-identity/git-hooks`) and points the global `core.hooksPath` at it. After a clean message passes validation, the dispatcher **chains to each repository's own `.git/hooks/<name>`**, so existing hooks (husky, pre-commit, ...) keep working.
 
 Caveats:
 
@@ -218,4 +218,4 @@ Unsets the global `core.hooksPath` (only when it points at our dispatcher) and r
 gospelo-github-identity strip-coauthors <commit-msg-file>
 ```
 
-The worker the hook invokes. Rewrites the message file in place, removing `Co-authored-by:` lines. Not meant to be run by hand. **Always exit 0** — its own I/O errors never block a commit.
+The worker the hook invokes. It rewrites prohibited trailer lines in place and exits 1 so the user notices and retries with the cleaned message. I/O errors still exit 0 rather than blocking a commit on the hook's own failure.

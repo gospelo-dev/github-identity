@@ -6,11 +6,13 @@
 
 Two layers of protection:
 
-  1. **Strip** — ``Co-authored-by:`` and ``Claude-Session:`` trailer lines are
-     silently removed (the human who runs the commit is the one accountable).
-  2. **Block** — after stripping, the message is scanned for forbidden
-     AI-related words (Claude, Fable, Opus, Sonnet, Haiku, Anthropic). If any
-     remain the commit is **rejected** so no AI provenance leaks into history.
+   1. **Strip + block** — ``Co-authored-by:`` and ``Claude-Session:`` trailer
+      lines are removed, then the commit is rejected so the user notices and
+      retries with the cleaned message.
+   2. **Block** — after stripping, the message is scanned for forbidden
+      AI-related words (Claude, Copilot, Fable, Opus, Sonnet, Haiku,
+      Anthropic). If any remain the commit is **rejected** so no AI provenance
+      leaks into history.
 
 Why a git hook rather than the ``gh``/``git`` PATH shim:
 
@@ -49,7 +51,7 @@ _STRIP_PATTERNS = (_COAUTHOR_RE, _AI_SESSION_RE)
 
 # AI-related words that must not appear in a committed message.
 _FORBIDDEN_WORDS_RE = re.compile(
-    r"\b(?:Claude|Fable|Opus|Sonnet|Haiku|Anthropic)\b",
+    r"\b(?:Claude|Copilot|Fable|Opus|Sonnet|Haiku|Anthropic)\b",
     re.IGNORECASE,
 )
 
@@ -104,7 +106,8 @@ def strip_main() -> None:
         sys.exit(0)  # never block the commit on our own IO error
 
     cleaned = strip_coauthored_by(original)
-    if cleaned != original:
+    stripped = cleaned != original
+    if stripped:
         path.write_text(cleaned, encoding="utf-8")
 
     forbidden = find_forbidden_words(cleaned)
@@ -114,6 +117,15 @@ def strip_main() -> None:
             f"gospelo-github-identity strip-coauthors: BLOCKED — commit message "
             f"contains forbidden AI-related words: {words}\n"
             f"  Edit the message to remove these words and retry.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    if stripped:
+        print(
+            "gospelo-github-identity strip-coauthors: BLOCKED — removed "
+            "Co-Authored-By or Claude-Session trailers from the commit message.\n"
+            "  Review the cleaned message and retry.",
             file=sys.stderr,
         )
         sys.exit(1)

@@ -95,6 +95,10 @@ def test_forbidden_words_case_insensitive():
     ]
 
 
+def test_forbidden_words_include_copilot():
+    assert commit_hook.find_forbidden_words("Generated with Copilot") == ["Copilot"]
+
+
 def test_no_forbidden_words():
     assert commit_hook.find_forbidden_words("feat: add user auth") == []
 
@@ -108,13 +112,13 @@ def test_forbidden_words_word_boundary():
 # ---------------------------------------------------------------------------
 
 
-def test_strip_main_rewrites_file(tmp_path, monkeypatch):
+def test_strip_main_rewrites_file_and_blocks(tmp_path, monkeypatch):
     f = tmp_path / "COMMIT_EDITMSG"
     f.write_text("feat: y\n\nCo-Authored-By: Bot <noreply@example.com>\n", encoding="utf-8")
     monkeypatch.setattr("sys.argv", ["strip-coauthors", str(f)])
     with pytest.raises(SystemExit) as exc:
         commit_hook.strip_main()
-    assert exc.value.code == 0
+    assert exc.value.code == 1
     assert f.read_text(encoding="utf-8") == "feat: y\n"
 
 
@@ -128,7 +132,7 @@ def test_strip_main_blocks_forbidden_words(tmp_path, monkeypatch, capsys):
     assert "BLOCKED" in capsys.readouterr().err
 
 
-def test_strip_main_strips_then_passes_when_clean(tmp_path, monkeypatch):
+def test_strip_main_strips_then_blocks_until_retry(tmp_path, monkeypatch):
     f = tmp_path / "COMMIT_EDITMSG"
     f.write_text(
         "feat: add auth\n\n"
@@ -139,8 +143,12 @@ def test_strip_main_strips_then_passes_when_clean(tmp_path, monkeypatch):
     monkeypatch.setattr("sys.argv", ["strip-coauthors", str(f)])
     with pytest.raises(SystemExit) as exc:
         commit_hook.strip_main()
-    assert exc.value.code == 0
+    assert exc.value.code == 1
     assert f.read_text(encoding="utf-8") == "feat: add auth\n"
+
+    with pytest.raises(SystemExit) as retry:
+        commit_hook.strip_main()
+    assert retry.value.code == 0
 
 
 # ---------------------------------------------------------------------------

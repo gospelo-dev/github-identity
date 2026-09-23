@@ -125,6 +125,49 @@ def git_toplevel(cwd: Path | None = None) -> Path | None:
     return None
 
 
+def git_set_remote_url(
+    remote: str, url: str, cwd: Path | None = None
+) -> None:
+    """Set the URL of ``remote`` via ``git remote set-url``."""
+    _require("git")
+    args = ["git", "remote", "set-url", remote, url]
+    result = _run(args, cwd=cwd)
+    if result.returncode != 0:
+        raise ExternalToolError(
+            f"{' '.join(args)} failed (exit {result.returncode}): "
+            f"{result.stderr or result.stdout}"
+        )
+
+
+def rewrite_remote_host(url: str, new_host: str) -> str | None:
+    """Return ``url`` with the SSH host replaced by ``new_host``.
+
+    Handles scp-like (``git@host:path``) and ``ssh://`` URLs.
+    Returns ``None`` for non-SSH URLs or when parsing fails.
+    """
+    url = url.strip()
+    if url.startswith("ssh://"):
+        authority_end = url.index("/", len("ssh://"))
+        authority = url[len("ssh://"):authority_end]
+        path = url[authority_end:]
+        if "@" in authority:
+            user = authority.split("@", 1)[0]
+            return f"ssh://{user}@{new_host}{path}"
+        return f"ssh://{new_host}{path}"
+
+    if "://" in url:
+        return None
+
+    if ":" in url:
+        target, path = url.split(":", 1)
+        if "/" in target:
+            return None
+        user = target.split("@", 1)[0] + "@" if "@" in target else ""
+        return f"{user}{new_host}:{path}"
+
+    return None
+
+
 def git_remote_url(remote: str = "origin", cwd: Path | None = None) -> str | None:
     """Return the push URL of ``remote`` for the repo at ``cwd``.
 

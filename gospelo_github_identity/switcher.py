@@ -136,6 +136,19 @@ def main() -> None:
                 file=sys.stderr,
             )
 
+    if git_ok and gh_ok and profile.ssh_host and scope == "local":
+        try:
+            current_url = _external.git_remote_url("origin", cwd=cwd)
+            if current_url:
+                rewritten = _external.rewrite_remote_host(current_url, profile.ssh_host)
+                if rewritten and rewritten != current_url:
+                    _external.git_set_remote_url("origin", rewritten, cwd=cwd)
+                    print(f"OK: origin remote rewritten: {current_url} -> {rewritten}")
+                elif rewritten:
+                    print(f"OK: origin remote already uses ssh host {profile.ssh_host}: {current_url}")
+        except _external.ExternalToolError as exc:
+            print(f"WARN: could not rewrite origin remote: {exc}", file=sys.stderr)
+
     if git_ok and gh_ok:
         try:
             set_active_profile(config, profile.name)

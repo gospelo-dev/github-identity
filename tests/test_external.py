@@ -439,3 +439,48 @@ def test_gh_auth_token_uses_explicit_gh_path(mock_subprocess) -> None:
     mock_subprocess.set("/opt/real/gh auth token --user alice", stdout="tok")
     assert _external.gh_auth_token("alice", gh_path="/opt/real/gh") == "tok"
     assert mock_subprocess.calls[-1].startswith("/opt/real/gh ")
+
+
+# ---------------------------------------------------------------------------
+# rewrite_remote_host (pure parser)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "url, new_host, expected",
+    [
+        ("git@github.com:org/repo.git", "gorosun", "git@gorosun:org/repo.git"),
+        ("git@gorosun:org/repo.git", "pasona-ghayakawa", "git@pasona-ghayakawa:org/repo.git"),
+        ("ssh://git@github.com/org/repo.git", "gorosun", "ssh://git@gorosun/org/repo.git"),
+        ("ssh://github.com/org/repo.git", "gorosun", "ssh://gorosun/org/repo.git"),
+        ("https://github.com/org/repo.git", "gorosun", None),
+        ("/local/path/repo.git", "gorosun", None),
+        ("", "gorosun", None),
+    ],
+)
+def test_rewrite_remote_host(url: str, new_host: str, expected: str | None) -> None:
+    assert _external.rewrite_remote_host(url, new_host) == expected
+
+
+# ---------------------------------------------------------------------------
+# git_set_remote_url
+# ---------------------------------------------------------------------------
+
+
+def test_git_set_remote_url_success(mock_subprocess) -> None:
+    mock_subprocess.set(
+        "git remote set-url origin git@gorosun:org/repo.git",
+        returncode=0,
+    )
+    _external.git_set_remote_url("origin", "git@gorosun:org/repo.git")
+    assert any("git remote set-url origin" in c for c in mock_subprocess.calls)
+
+
+def test_git_set_remote_url_failure_raises(mock_subprocess) -> None:
+    mock_subprocess.set(
+        "git remote set-url origin",
+        returncode=2,
+        stderr="error: No such remote",
+    )
+    with pytest.raises(ExternalToolError, match="failed"):
+        _external.git_set_remote_url("origin", "git@gorosun:org/repo.git")

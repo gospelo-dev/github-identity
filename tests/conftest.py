@@ -220,6 +220,8 @@ def mock_external(monkeypatch: pytest.MonkeyPatch) -> dict:
         # None  -> a correct switch (real login becomes the target account).
         # str   -> a keyring mismatch (real login stays this stale value).
         "gh_switch_stale_login": None,
+        # Remote URL rewriting tracking.
+        "set_remote_calls": [],
     }
 
     def fake_get_config(key: str, cwd=None) -> str | None:
@@ -258,6 +260,9 @@ def mock_external(monkeypatch: pytest.MonkeyPatch) -> dict:
     def fake_ssh_probe(target: str, **kwargs) -> tuple[str | None, str]:
         return state["ssh_probe_login"], state["ssh_probe_detail"]
 
+    def fake_set_remote_url(remote: str, url: str, cwd=None) -> None:
+        state["set_remote_calls"].append((remote, url, cwd))
+
     monkeypatch.setattr("gospelo_github_identity._external.git_get_config", fake_get_config)
     monkeypatch.setattr("gospelo_github_identity._external.git_set_config", fake_set_config)
     monkeypatch.setattr("gospelo_github_identity._external.git_inside_work_tree", fake_inside_tree)
@@ -265,4 +270,5 @@ def mock_external(monkeypatch: pytest.MonkeyPatch) -> dict:
     monkeypatch.setattr("gospelo_github_identity._external.gh_switch_account", fake_switch)
     monkeypatch.setattr("gospelo_github_identity._external.git_remote_url", fake_remote_url)
     monkeypatch.setattr("gospelo_github_identity._external.ssh_probe_login", fake_ssh_probe)
+    monkeypatch.setattr("gospelo_github_identity._external.git_set_remote_url", fake_set_remote_url)
     return state

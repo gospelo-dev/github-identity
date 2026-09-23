@@ -11,6 +11,7 @@ Drives ``switcher.main`` via ``monkeypatch`` of ``sys.argv`` and the
 from __future__ import annotations
 
 from pathlib import Path
+from textwrap import dedent
 
 import pytest
 
@@ -257,3 +258,121 @@ def test_switch_unverifiable_is_non_fatal(
     assert exc.value.code == 0
     out = capsys.readouterr().out
     assert "could not confirm" in out
+
+
+# ---------------------------------------------------------------------------
+# Remote URL rewriting on switch
+# ---------------------------------------------------------------------------
+
+CONFIG_WITH_SSH_HOST = dedent(
+    """\
+    version: "1"
+    profiles:
+      personal:
+        description: "Personal OSS work"
+        git:
+          user.name: "Alice Example"
+          user.email: "alice@example.com"
+        gh:
+          account: "alice-personal"
+        ssh:
+          host: alice-ssh
+        paths:
+          - ~/projects/personal/**
+      work:
+        description: "Day job"
+        git:
+          user.name: "Alice Example"
+          user.email: "alice@company.example"
+        gh:
+          account: "alice-work"
+        paths:
+          - ~/projects/work/**
+    default_profile: personal
+    """
+)
+
+
+@pytest.fixture
+def isolated_config_ssh(
+    tmp_home: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> Path:
+    cfg = tmp_path / "config-ssh.yml"
+    cfg.write_text(CONFIG_WITH_SSH_HOST, encoding="utf-8")
+    monkeypatch.setenv("GOSPELO_GITHUB_IDENTITY_CONFIG", str(cfg))
+    return cfg
+
+
+def test_switch_rewrites_origin_remote(
+    isolated_config_ssh: Path,
+    mock_external,
+    tmp_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    target = tmp_home / "projects" / "personal" / "demo"
+    target.mkdir(parents=True)
+    mock_external["inside_work_tree"] = True
+    mock_external["remote_url"] = "git@github.com:org/repo.git"
+
+    monkeypatch.setattr("sys.argv", ["switch", "personal", "--cwd", str(target)])
+    with pytest.raises(SystemExit) as exc:
+        switcher.main()
+    assert exc.value.code == 0
+    assert mock_external["set_remote_calls"] == [
+        ("origin", "git@alice-ssh:org/repo.git", target),
+    ]
+    out = capsys.readouterr().out
+    assert "origin remote rewritten" in out
+
+
+def test_switch_no_rewrite_when_host_matches(
+    isolated_config_ssh: Path,
+    mock_external,
+    tmp_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    target = tmp_home / "projects" / "personal" / "demo"
+    target.mkdir(parents=True)
+    mock_external["inside_work_tree"] = True
+    mock_external["remote_url"] = "git@alice-ssh:org/repo.git"
+
+    monkeypatch.setattr("sys.argv", ["switch", "personal", "--cwd", str(target)])
+    with pytest.raises(SystemExit) as exc:
+        switcher.main()
+    assert exc.value.code == 0
+    assert mock_external["set_remote_calls"] == []
+    out = capsys.readouterr().out
+    assert "already uses ssh host alice-ssh" in out
+
+
+def test_switch_no_rewrite_without_ssh_host(
+    isolated_config: Path,
+    mock_external,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mock_external["remote_url"] = "git@github.com:org/repo.git"
+    monkeypatch.setattr("sys.argv", ["switch", "personal", "--global"])
+    with pytest.raises(SystemExit) as exc:
+        switcher.main()
+    assert exc.value.code == 0
+    assert mock_external["set_remote_calls"] == []
+
+
+def test_switch_no_rewrite_on_https_remote(
+    isolated_config_ssh: Path,
+    mock_external,
+    tmp_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = tmp_home / "projects" / "personal" / "demo"
+    target.mkdir(parents=True)
+    mock_external["inside_work_tree"] = True
+    mock_external["remote_url"] = "https://github.com/org/repo.git"
+
+    monkeypatch.setattr("sys.argv", ["switch", "personal", "--cwd", str(target)])
+    with pytest.raises(SystemExit) as exc:
+        switcher.main()
+    assert exc.value.code == 0
+    assert mock_external["set_remote_calls"] == []

@@ -25,6 +25,17 @@ def _clear_skip_env():
     os.environ.pop(guard.SKIP_ENV, None)
 
 
+@pytest.fixture(autouse=True)
+def _isolate_guard_env(monkeypatch, tmp_path):
+    """Never read the developer's real config, and undo the credential env
+    the read path exports (GH_TOKEN / GIT_CONFIG_* / token) after each test."""
+    monkeypatch.setenv("GOSPELO_GITHUB_IDENTITY_CONFIG", str(tmp_path / "absent.yml"))
+    saved = dict(os.environ)
+    yield
+    os.environ.clear()
+    os.environ.update(saved)
+
+
 # ---------------------------------------------------------------------------
 # Write classification (pure)
 # ---------------------------------------------------------------------------
@@ -598,3 +609,178 @@ def test_git_push_unknown_owner_blocks_when_owners_enabled(
     assert exc.value.code == 1
     assert captured_exec == []
     assert "stranger-org" in capsys.readouterr().err
+
+
+# ---------------------------------------------------------------------------
+# Read-side credential injection (declared owner -> profile identity; never blocks)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "argv,expected",
+    [
+        (["status"], None),
+        (["log", "--oneline"], None),
+        (["clone", "https://github.com/acme-corp/x.git"], ("https://github.com/acme-corp/x.git", 1)),
+        (["clone", "--depth", "1", "-b", "main", "https://h/o/r", "dir"], ("https://h/o/r", 5)),
+        (["clone", "--", "git@github.com:o/r.git"], ("git@github.com:o/r.git", 2)),
+        (["-C", "/r", "fetch"], ("origin", None)),
+        (["fetch", "upstream", "main"], ("upstream", None)),
+        (["fetch", "--all"], ("origin", None)),
+        (["pull", "--rebase", "origin"], ("origin", None)),
+        (["ls-remote", "https://github.com/o/r"], ("https://github.com/o/r", 1)),
+        (["ls-remote", "git@github.com:o/r.git"], ("git@github.com:o/r.git", 1)),
+        (["remote", "update"], ("origin", None)),
+        (["remote", "add", "x", "url"], None),
+        (["remote", "-v"], None),
+        (["submodule", "update", "--init"], ("origin", None)),
+        (["submodule", "status"], None),
+    ],
+)
+def test_git_read_target(argv, expected):
+    assert guard.git_read_target(argv) == expected
+
+
+READ_CONFIG_YAML = OWNERS_CONFIG_YAML.replace(
+    '      owners: [acme-corp]\n',
+    '      owners: [acme-corp]\n    ssh: {host: "work-gh"}\n',
+)
+
+
+@pytest.fixture
+def read_config(tmp_home, write_config, monkeypatch):
+    cfg = write_config(READ_CONFIG_YAML)
+    monkeypatch.setenv("GOSPELO_GITHUB_IDENTITY_CONFIG", str(cfg))
+    return cfg
+
+
+def _injected_git_token() -> str | None:
+    n = int(os.environ.get("GIT_CONFIG_COUNT", "0"))
+    keys = [os.environ.get(f"GIT_CONFIG_KEY_{i}") for i in range(n)]
+    if "credential.https://github.com.helper" not in keys:
+        return None
+    return os.environ.get(guard.TOKEN_ENV)
+
+
+def test_read_git_clone_https_declared_owner_injects_token(
+    monkeypatch, captured_exec, read_config, mock_external, token_store, capsys
+):
+    url = "https://github.com/acme-corp/private.git"
+    _run_guard(monkeypatch, "git", "/usr/bin/git", ["clone", url])
+    assert captured_exec == [("/usr/bin/git", ["/usr/bin/git", "clone", url])]
+    assert _injected_git_token() == "tok-work"
+    assert token_store == [("alice-work", None)]
+    assert guard.SKIP_ENV not in os.environ  # nested shims must stay active
+    assert "alice-work" in capsys.readouterr().err
+
+
+def test_read_git_clone_undeclared_owner_untouched(
+    monkeypatch, captured_exec, read_config, mock_external, token_store
+):
+    url = "https://github.com/someone-else/public.git"
+    _run_guard(monkeypatch, "git", "/usr/bin/git", ["clone", url])
+    assert captured_exec == [("/usr/bin/git", ["/usr/bin/git", "clone", url])]
+    assert _injected_git_token() is None
+    assert token_store == []
+
+
+def test_read_git_clone_non_github_host_untouched(
+    monkeypatch, captured_exec, read_config, mock_external, token_store
+):
+    _run_guard(monkeypatch, "git", "/usr/bin/git", ["clone", "https://gitlab.com/acme-corp/x.git"])
+    assert _injected_git_token() is None
+    assert token_store == []
+
+
+def test_read_git_clone_ssh_rewrites_to_profile_host(
+    monkeypatch, captured_exec, read_config, mock_external, token_store
+):
+    _run_guard(monkeypatch, "git", "/usr/bin/git", ["clone", "git@github.com:acme-corp/x.git", "d"])
+    assert captured_exec == [
+        ("/usr/bin/git", ["/usr/bin/git", "clone", "git@work-gh:acme-corp/x.git", "d"])
+    ]
+    assert token_store == []  # ssh: no token needed
+
+
+def test_read_git_fetch_resolves_remote_name(
+    monkeypatch, captured_exec, read_config, mock_external, token_store
+):
+    mock_external["remote_url"] = "https://github.com/alice-oss-org/lib.git"
+    _run_guard(monkeypatch, "git", "/usr/bin/git", ["fetch", "origin"])
+    assert captured_exec == [("/usr/bin/git", ["/usr/bin/git", "fetch", "origin"])]
+    assert _injected_git_token() == "tok-personal"
+
+
+def test_read_git_missing_credential_passes_through(
+    monkeypatch, captured_exec, read_config, mock_external, capsys
+):
+    monkeypatch.setattr("gospelo_github_identity._external.gh_auth_token", lambda *a, **k: None)
+    url = "https://github.com/acme-corp/private.git"
+    _run_guard(monkeypatch, "git", "/usr/bin/git", ["clone", url])
+    assert captured_exec == [("/usr/bin/git", ["/usr/bin/git", "clone", url])]
+    assert _injected_git_token() is None
+    assert "no stored credential" in capsys.readouterr().err
+
+
+def test_read_git_non_network_skips_config(monkeypatch, captured_exec, tmp_path):
+    def boom():
+        raise AssertionError("config must not be loaded for git status")
+
+    monkeypatch.setattr(guard, "load_config", boom)
+    _run_guard(monkeypatch, "git", "/usr/bin/git", ["status"])
+    assert captured_exec == [("/usr/bin/git", ["/usr/bin/git", "status"])]
+
+
+def test_read_gh_repo_clone_injects_token(
+    monkeypatch, captured_exec, read_config, mock_external, token_store
+):
+    _run_guard(monkeypatch, "gh", "/usr/bin/gh", ["repo", "clone", "acme-corp/x"])
+    assert captured_exec == [("/usr/bin/gh", ["/usr/bin/gh", "repo", "clone", "acme-corp/x"])]
+    assert os.environ["GH_TOKEN"] == "tok-work"
+    assert token_store == [("alice-work", "/usr/bin/gh")]
+    assert guard.SKIP_ENV not in os.environ  # gh's inner `git clone` hits the git shim
+
+
+def test_read_gh_api_get_explicit_owner(
+    monkeypatch, captured_exec, read_config, mock_external, token_store
+):
+    _run_guard(monkeypatch, "gh", "/usr/bin/gh", ["api", "repos/alice-oss-org/lib/contents"])
+    assert os.environ["GH_TOKEN"] == "tok-personal"
+
+
+def test_read_gh_repo_scoped_uses_cwd_remote(
+    monkeypatch, captured_exec, read_config, mock_external, token_store
+):
+    mock_external["remote_url"] = "git@github.com:acme-corp/app.git"
+    _run_guard(monkeypatch, "gh", "/usr/bin/gh", ["pr", "list"])
+    assert os.environ["GH_TOKEN"] == "tok-work"
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["auth", "status"],
+        ["api", "/user"],               # no repo target, not repo-scoped
+        ["search", "repos", "foo"],
+        ["repo", "view", "stranger/x"],  # undeclared owner
+    ],
+)
+def test_read_gh_no_injection(
+    monkeypatch, captured_exec, read_config, mock_external, token_store, argv
+):
+    mock_external["remote_url"] = "git@github.com:acme-corp/app.git"
+    _run_guard(monkeypatch, "gh", "/usr/bin/gh", argv)
+    assert captured_exec == [("/usr/bin/gh", ["/usr/bin/gh", *argv])]
+    assert "GH_TOKEN" not in os.environ
+    assert token_store == []
+
+
+def test_read_without_owners_is_plain_passthrough(
+    monkeypatch, captured_exec, tmp_home, write_config, mock_external, token_store
+):
+    cfg = write_config(OWNERS_CONFIG_YAML.replace("      owners: [alice-personal, alice-oss-org]\n", "")
+                       .replace("      owners: [acme-corp]\n", ""))
+    monkeypatch.setenv("GOSPELO_GITHUB_IDENTITY_CONFIG", str(cfg))
+    _run_guard(monkeypatch, "git", "/usr/bin/git", ["clone", "https://github.com/acme-corp/x"])
+    assert _injected_git_token() is None
+    assert token_store == []

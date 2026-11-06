@@ -15,7 +15,7 @@
 exec gospelo-github-identity guard --tool gh --real /path/to/real/gh -- "$@"
 ```
 
-Read-only commands always pass through (silently), `GOSPELO_GITHUB_IDENTITY_SKIP=1` is the explicit bypass, and without a usable config the guard governs nothing and passes through. Write commands are gated per tool as follows.
+Read-only commands are never blocked (network reads to a declared owner get that owner's identity — see below), `GOSPELO_GITHUB_IDENTITY_SKIP=1` is the explicit bypass, and without a usable config the guard governs nothing and passes through. Write commands are gated per tool as follows.
 
 ### gh writes: enforce mode (owners declared)
 
@@ -60,6 +60,22 @@ Consequences of this structure:
 - Operations with no repo target (`gh gist create`, a POST to `gh api /user`, ...) fall back to the cwd's profile; when the cwd is ungoverned too, they are refused.
 
 A token that cannot be materialized (the account was never `gh auth login`-ed) also blocks before execution.
+
+### Reads: identity injection for declared owners (never blocks)
+
+When owners are declared, network reads that target a **declared** owner run as that owner's profile instead of the machine-global active account, so a private repo of a non-active account can be cloned or fetched. Reads are **never blocked**; an undeclared owner, an unresolvable target, a missing stored credential or a missing config all fall back to the plain pass-through (public clones keep working).
+
+| Tool | Covered reads | Owner from | Effect |
+|---|---|---|---|
+| git | `clone`, `fetch`, `pull`, `ls-remote`, `remote update/show/prune`, `submodule update/sync` | the URL argument, else the named remote (default `origin`) of the target dir | **https://github.com** → the profile token is supplied through a credential helper set via `GIT_CONFIG_COUNT` (the ambient helper list is reset; the token is read from the environment, never placed on argv). **SSH `git@github.com:` URL given as an argument** → rewritten to the profile's `ssh.host` alias |
+| gh | any non-write command except `auth`/`config`/`alias`/`extension`/... | `--repo`, `gh repo <action> OWNER/REPO`, `gh api repos/OWNER/...`; repo-scoped commands (`pr`, `issue`, `repo`, `release`, `run`, ...) fall back to the cwd's `origin` | `GH_TOKEN` injected for that one invocation |
+
+Notes:
+
+- `gh repo clone OWNER/REPO` under `git_protocol: ssh` makes gh spawn `git clone git@github.com:...`; that inner call goes through the **git shim** (when installed with `--tools gh,git`) and gets rewritten to the profile's `ssh.host`. Without the git shim or an `ssh.host`, the default SSH key decides.
+- Git remotes that are **already** SSH with host `github.com` are not rewritten on fetch/pull — run `gospelo-github-identity switch` once to point `origin` at the profile's SSH host.
+- One invocation uses one identity: `fetch --all`, `remote update` and `submodule update` resolve it from `origin`, so a private repo of a *different* owner mixed into the same call may fail.
+- `GOSPELO_GITHUB_IDENTITY_QUIET=1` silences the `read as ...` notice.
 
 ### gh writes: check mode (no owners — backward compatible)
 
@@ -109,7 +125,7 @@ The guard is designed around one line: **fail-closed inside the territory it was
 | Check mode, ungoverned directory | Passes through (notice: `not governed` — so a paths typo stays visible) |
 | Config missing / unreadable | Passes through (notice: `no usable config`) |
 | `GOSPELO_GITHUB_IDENTITY_SKIP=1` | Passes through (explicit bypass) |
-| Read-only command | Always passes through (silently) |
+| Read-only command | Never blocked; declared-owner network reads get the owner's identity, everything else passes through silently |
 
 Installing the shims therefore never breaks git/gh work on machines without a config, or (in check mode) in unmanaged directories.
 

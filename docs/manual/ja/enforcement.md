@@ -15,7 +15,7 @@
 exec gospelo-github-identity guard --tool gh --real /path/to/real/gh -- "$@"
 ```
 
-読み取り専用コマンドは常に素通し (無音)、`GOSPELO_GITHUB_IDENTITY_SKIP=1` は明示バイパス、config が読めない環境では guard は何も統治せず素通しします。書き込みコマンドはツールごとに次のようにゲートされます。
+読み取り専用コマンドはブロックしません (宣言済み owner へのネットワーク読み取りにはその owner の identity を注入 — 後述)、`GOSPELO_GITHUB_IDENTITY_SKIP=1` は明示バイパス、config が読めない環境では guard は何も統治せず素通しします。書き込みコマンドはツールごとに次のようにゲートされます。
 
 ### gh の書き込み: enforce 型 (owners 宣言時)
 
@@ -60,6 +60,22 @@ flowchart TB
 - repo 対象を持たない操作 (`gh gist create`、`gh api /user` への POST 等) は cwd の profile にフォールバックし、cwd も統治外なら拒否します。
 
 トークンが keyring にない場合 (そのアカウントで `gh auth login` していない) も、注入できないため実行前にブロックします。
+
+### 読み取り: 宣言済み owner への identity 注入 (ブロックしない)
+
+owners が宣言されている場合、**宣言済み** owner を対象とするネットワーク読み取りは、マシン全体のアクティブアカウントではなくその owner の profile として実行されます。これにより、非アクティブアカウントの private repo も clone / fetch できます。読み取りは**決してブロックしません**。未宣言 owner、対象が解決できない場合、保存済みトークンがない場合、config がない場合は、いずれも従来どおり素通しします (public repo の clone は壊れません)。
+
+| ツール | 対象の読み取り | owner の解決元 | 効果 |
+|---|---|---|---|
+| git | `clone`, `fetch`, `pull`, `ls-remote`, `remote update/show/prune`, `submodule update/sync` | 引数の URL、なければ対象ディレクトリの指定 remote (既定 `origin`) | **https://github.com** → `GIT_CONFIG_COUNT` で設定した credential helper から profile のトークンを渡す (ambient の helper 列はリセット。トークンは環境変数から読み、argv には出ない)。**引数で渡された SSH の `git@github.com:` URL** → profile の `ssh.host` エイリアスへ書き換え |
+| gh | 書き込み以外のコマンド (`auth`/`config`/`alias`/`extension` 等を除く) | `--repo`、`gh repo <action> OWNER/REPO`、`gh api repos/OWNER/...`。repo 系 (`pr`, `issue`, `repo`, `release`, `run` 等) は cwd の `origin` にフォールバック | その 1 回の実行にだけ `GH_TOKEN` を注入 |
+
+注意:
+
+- `git_protocol: ssh` の状態で `gh repo clone OWNER/REPO` を実行すると、gh は内部で `git clone git@github.com:...` を起動します。この内部呼び出しが (`--tools gh,git` でインストールした) **git シム**を通り、profile の `ssh.host` へ書き換えられます。git シムまたは `ssh.host` がない場合は、デフォルトの SSH 鍵で認証されます。
+- **既に** SSH (ホスト `github.com`) になっている remote は、fetch/pull 時には書き換えません。一度 `gospelo-github-identity switch` を実行して `origin` を profile の SSH ホストに向けてください。
+- 1 回の実行で使う identity は 1 つです。`fetch --all` / `remote update` / `submodule update` は `origin` から identity を解決するため、同じ呼び出しに*別 owner* の private repo が混ざると、その分は失敗することがあります。
+- `GOSPELO_GITHUB_IDENTITY_QUIET=1` で `read as ...` の通知を抑止できます。
 
 ### gh の書き込み: check 型 (owners 未宣言時 — 後方互換)
 
@@ -109,7 +125,7 @@ guard は「**統治すると宣言された範囲では fail-closed、それ以
 | check 型で統治外ディレクトリ | 素通し (`not governed` を通知 — paths のタイポに気づけるように) |
 | config 不在・読み取り不可 | 素通し (`no usable config` を通知) |
 | `GOSPELO_GITHUB_IDENTITY_SKIP=1` | 素通し (明示的バイパス) |
-| 読み取り専用コマンド | 常に素通し (無音) |
+| 読み取り専用コマンド | ブロックしない。宣言済み owner へのネットワーク読み取りは owner の identity を注入、それ以外は無音で素通し |
 
 つまりシムを入れても、config を持たない環境や (check 型での) 管理対象外ディレクトリの git/gh 作業は壊れません。
 

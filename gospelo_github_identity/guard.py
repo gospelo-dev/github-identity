@@ -5,9 +5,11 @@
 """Deterministic, local, target-aware command guard for ``gh`` / ``git``.
 
 This shadows ``gh`` and ``git`` on ``PATH`` with tiny shim executables. Every
-invocation is routed through ``gospelo-github-identity guard``, which passes
-**read-only** commands straight through to the real binary, and gates **write**
-commands (``git push``; ``gh release/pr/repo/... create`` etc.):
+invocation is routed through ``gospelo-github-identity guard``, which never
+blocks **read-only** commands (network reads targeting a declared owner run
+with that owner's profile credential; everything else passes straight
+through), and gates **write** commands (``git push``; ``gh release/pr/repo/...
+create`` etc.):
 
   * The write's **target** is resolved first — the ``--repo`` argument, the
     ``git -C`` directory, or the working directory's remote — never just cwd.
@@ -347,7 +349,293 @@ def git_target_dir(argv: list[str], cwd: Path) -> Path:
 
 
 # ---------------------------------------------------------------------------
-# Runtime gate: `gospelo-github-identity guard --tool <t> --real <path> -- <args>`
+# Read-side credential injection (never blocks)
+# ---------------------------------------------------------------------------
+#
+# A read (clone / fetch / gh repo view ...) against a *declared* owner runs
+# with that profile's identity instead of the machine-global active account,
+# so private repos of a non-active account are reachable. Undeclared owners,
+# unresolvable targets and any failure along the way fall back to the plain
+# pass-through, so public clones and unrelated machines are never broken.
+
+TOKEN_ENV = "GOSPELO_GITHUB_IDENTITY_TOKEN"
+
+# git subcommands that talk to a remote -> the actions under them that do so
+# (``None`` = the subcommand itself is the network read).
+_GIT_NET_READS: dict[str, set[str] | None] = {
+    "clone": None,
+    "fetch": None,
+    "pull": None,
+    "ls-remote": None,
+    "remote": {"update", "show", "prune"},
+    "submodule": {"update", "sync"},
+}
+
+# Value-taking options of clone / fetch / pull / ls-remote (separate-token
+# form), so their value is not mistaken for the URL / remote positional.
+_GIT_READ_VALUE_FLAGS = {
+    "-o", "--origin", "-b", "--branch", "-u", "--upload-pack", "--reference",
+    "--reference-if-able", "--separate-git-dir", "--depth", "--deepen",
+    "--shallow-since", "--shallow-exclude", "-c", "--config", "--template",
+    "--filter", "-j", "--jobs", "--server-option", "--bundle-uri", "--ref-format",
+    "--negotiation-tip", "--refmap", "--recurse-submodules-default", "-s",
+    "--strategy", "-X", "--strategy-option", "--sort",
+}
+
+# gh subcommands that act on "the current repository" when no explicit
+# target is given -> fall back to the cwd's origin owner for these only.
+_GH_REPO_SCOPED = {
+    "pr", "issue", "repo", "release", "run", "workflow", "label", "cache",
+    "secret", "variable", "browse", "ruleset", "attestation",
+}
+# gh subcommands that must never see an injected token (they inspect or
+# manage the local auth / config state itself).
+_GH_NO_INJECT = {"auth", "config", "alias", "extension", "completion", "help", "version"}
+
+# The credential helper reads the token from the environment, so it never
+# appears on any argv (``ps``) or in a config file.
+_GIT_TOKEN_HELPER = (
+    '!f() { test "$1" = get || exit 0; echo username=x-access-token; '
+    f'echo "password=${{{TOKEN_ENV}}}"; }}; f'
+)
+
+
+def _git_sub_index(argv: list[str]) -> int | None:
+    """Index of the git subcommand in ``argv`` (global flags skipped)."""
+    i = 0
+    while i < len(argv):
+        a = argv[i]
+        if a in _GIT_VALUE_FLAGS:
+            i += 2
+            continue
+        if a.startswith("-"):
+            i += 1
+            continue
+        return i
+    return None
+
+
+def _first_positional(argv: list[str], start: int) -> int | None:
+    """Index of the first positional at/after ``start`` (read-option aware)."""
+    i = start
+    while i < len(argv):
+        a = argv[i]
+        if a == "--":
+            return i + 1 if i + 1 < len(argv) else None
+        if a in _GIT_READ_VALUE_FLAGS:
+            i += 2
+            continue
+        if a.startswith("-"):
+            i += 1
+            continue
+        return i
+    return None
+
+
+def _looks_like_url(value: str) -> bool:
+    if "://" in value:
+        return True
+    # scp-like ``[user@]host:path`` (colon before any slash)
+    head, sep, _tail = value.partition(":")
+    return bool(sep) and bool(head) and "/" not in head
+
+
+def git_read_target(argv: list[str]) -> tuple[str, int | None] | None:
+    """Classify a git network read.
+
+    Returns ``(spec, url_index)`` where ``spec`` is either an explicit URL
+    (``url_index`` = its position in ``argv``, so it can be rewritten) or a
+    remote name to resolve (``url_index`` = ``None``). Returns ``None`` when
+    the invocation is not a network read.
+    """
+    sub_i = _git_sub_index(argv)
+    if sub_i is None:
+        return None
+    sub = argv[sub_i]
+    if sub not in _GIT_NET_READS:
+        return None
+    actions = _GIT_NET_READS[sub]
+    if actions is not None:
+        pos = _first_positional(argv, sub_i + 1)
+        if pos is None or argv[pos] not in actions:
+            return None
+        return "origin", None  # multi-remote / submodule ops: origin's owner
+
+    pos = _first_positional(argv, sub_i + 1)
+    if sub == "clone":
+        if pos is None:
+            return None
+        return argv[pos], pos
+    if pos is None or "--all" in argv or "--multiple" in argv:
+        return "origin", None
+    if _looks_like_url(argv[pos]):
+        return argv[pos], pos
+    return argv[pos], None  # a remote name
+
+
+def _url_host(url: str) -> str | None:
+    """Host of an https/ssh/scp-like URL (userinfo and port stripped)."""
+    url = url.strip()
+    if "://" in url:
+        authority = url.split("://", 1)[1].split("/", 1)[0]
+    elif _looks_like_url(url):
+        authority = url.split(":", 1)[0]
+    else:
+        return None
+    authority = authority.rsplit("@", 1)[-1]
+    if authority.startswith("["):
+        return None
+    return authority.split(":", 1)[0].lower() or None
+
+
+def _is_github_https(url: str) -> bool:
+    return url.strip().lower().startswith("https://") and _url_host(url) == "github.com"
+
+
+def _is_github_ssh(url: str) -> bool:
+    u = url.strip().lower()
+    is_ssh = u.startswith(("ssh://", "git+ssh://")) or ("://" not in u and _looks_like_url(u))
+    return is_ssh and _url_host(url) == "github.com"
+
+
+def _inject_git_token(token: str) -> None:
+    """Make git use ``token`` for github.com https, overriding ambient helpers.
+
+    Uses ``GIT_CONFIG_COUNT`` (git >= 2.31): command-line-scope config read
+    after every config file. The empty ``helper`` entry resets the helper list
+    so the ambient (active-account) helper is not consulted first.
+    """
+    n = int(os.environ.get("GIT_CONFIG_COUNT", "0") or 0)
+    key = "credential.https://github.com.helper"
+    for value in ("", _GIT_TOKEN_HELPER):
+        os.environ[f"GIT_CONFIG_KEY_{n}"] = key
+        os.environ[f"GIT_CONFIG_VALUE_{n}"] = value
+        n += 1
+    os.environ["GIT_CONFIG_COUNT"] = str(n)
+    os.environ[TOKEN_ENV] = token
+
+
+def _profile_token(profile, gh_path: str | None) -> str | None:
+    try:
+        return _external.gh_auth_token(profile.gh_account, gh_path=gh_path)
+    except _external.ExternalToolError:
+        return None
+
+
+def _prepare_git_read(config, argv: list[str]) -> list[str]:
+    target = git_read_target(argv)
+    if target is None:
+        return argv
+    spec, url_index = target
+    if url_index is not None:
+        url = spec
+    else:
+        url = _external.git_remote_url(spec, cwd=git_target_dir(argv, Path.cwd()))
+        if not url:
+            return argv
+    owner = _external.owner_from_remote_url(url)
+    profile = config.profile_for_owner(owner) if owner else None
+    if profile is None:
+        return argv
+
+    if _is_github_https(url):
+        token = _profile_token(profile, None)
+        if not token:
+            _notice(
+                f"no stored credential for {profile.gh_account!r} (profile "
+                f"{profile.name!r}); read passes through with ambient credentials."
+            )
+            return argv
+        _inject_git_token(token)
+        _notice(f"read as {profile.gh_account!r} for owner {owner!r} (profile {profile.name!r}).")
+        return argv
+
+    if _is_github_ssh(url) and url_index is not None and profile.ssh_host:
+        rewritten = _external.rewrite_remote_host(url, profile.ssh_host)
+        if rewritten and rewritten != url:
+            _notice(
+                f"read via ssh host {profile.ssh_host!r} for owner {owner!r} "
+                f"(profile {profile.name!r}): {rewritten}"
+            )
+            return [*argv[:url_index], rewritten, *argv[url_index + 1:]]
+    return argv
+
+
+def gh_read_owner(argv: list[str]) -> str | None:
+    """Owner an explicit gh read targets (placeholders like ``{owner}`` -> None)."""
+    owner = gh_target_owner(argv)
+    if owner is None or owner.startswith("{"):
+        return None
+    return owner
+
+
+def _prepare_gh_read(config, argv: list[str], real: str) -> list[str]:
+    sub, _action = _gh_sub_action(argv)
+    if sub is None or sub in _GH_NO_INJECT:
+        return argv
+    owner = gh_read_owner(argv)
+    source = f"target owner {owner!r}"
+    if owner is None:
+        uses_cwd_repo = sub in _GH_REPO_SCOPED or (
+            sub == "api" and any("{owner}" in a for a in argv)
+        )
+        if not uses_cwd_repo:
+            return argv
+        url = _external.git_remote_url("origin", cwd=Path.cwd())
+        owner = _external.owner_from_remote_url(url) if url else None
+        source = f"cwd remote owner {owner!r}"
+        if owner is None:
+            return argv
+    profile = config.profile_for_owner(owner)
+    if profile is None:
+        return argv
+    token = _profile_token(profile, real)
+    if not token:
+        _notice(
+            f"no stored credential for {profile.gh_account!r} (profile "
+            f"{profile.name!r}); read passes through with the active account."
+        )
+        return argv
+    os.environ["GH_TOKEN"] = token
+    _notice(f"read as {profile.gh_account!r} for {source} (profile {profile.name!r}).")
+    return argv
+
+
+def prepare_read(tool: str, argv: list[str], real: str) -> list[str]:
+    """Prepare a read-only invocation; return the (possibly rewritten) argv.
+
+    Side effect: may export the target profile's credential into
+    ``os.environ`` for the real binary. Never blocks; any failure yields the
+    original argv and an untouched credential environment.
+    """
+    if tool == "git" and git_read_target(argv) is None:
+        return argv  # fast path: status/log/diff/... never load the config
+    try:
+        config = load_config()
+    except ConfigError:
+        return argv
+    if not config.owners_declared():
+        return argv
+
+    # Our own probes (git remote get-url, gh auth token) must not re-enter the
+    # guard; but the real binary must, because e.g. ``gh repo clone`` spawns
+    # ``git clone`` through the PATH shim (which is where an ssh URL gets
+    # rewritten to the profile's host alias).
+    had_skip = SKIP_ENV in os.environ
+    os.environ[SKIP_ENV] = "1"
+    try:
+        if tool == "git":
+            return _prepare_git_read(config, argv)
+        return _prepare_gh_read(config, argv, real)
+    except _external.ExternalToolError:
+        return argv
+    finally:
+        if not had_skip:
+            os.environ.pop(SKIP_ENV, None)
+
+
+# ---------------------------------------------------------------------------
+# Runtime gate:`gospelo-github-identity guard --tool <t> --real <path> -- <args>`
 # ---------------------------------------------------------------------------
 
 
@@ -560,9 +848,10 @@ def guard_main() -> None:
         _exec_real(real, cmd_argv)
         return  # (unreachable after execv; kept for tests that patch execv)
 
-    # Read-only commands are never gated.
+    # Read-only commands are never gated (never blocked). Network reads that
+    # target a declared owner get that profile's credential, though.
     if not is_write_invocation(tool, cmd_argv):
-        _exec_real(real, cmd_argv)
+        _exec_real(real, prepare_read(tool, cmd_argv, real))
         return
 
     violation = comment_input_violation(tool, cmd_argv)

@@ -22,7 +22,7 @@ keywords = [
     "developer-tools",
 ]
 dependencies = [
-    "PyYAML>=6.0",
+    "PyYAML==6.0.3",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",

@@ -21,6 +21,7 @@ coverage.xml
 *.log
 .DS_Store
 *.lock
+!uv.lock
 .claude/
 .vscode/
 .github/
@@ -30,3 +31,8 @@ node_modules/
 
 # Temporary files
 scratch/
+/.claude/skills/
+/scratch/
+/worktrees/
+/.claude/settings.json
+/.claude/settings.local.json
